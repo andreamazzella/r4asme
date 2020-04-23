@@ -1,0 +1,305 @@
+---
+title: "1: Classical analysis of categorical variables"
+subtitle: "R 4 ASME"
+author: Andrea Mazzella [(github)](https://github.com/andreamazzella)
+output: html_notebook
+---
+
+-------------------------------------------------------------------------------
+
+## Prerequisites
+You'll better understand this code if you know about the following concepts. If you want to learn more about them, you could go through some of my introductory material [here](https://github.com/andreamazzella/IntRo).
+
+* Use of .Rmd notebooks
+* Use of packages
+* Assignment `<-`
+* Pipes `%>%` `%$%` `%<>%`
+* Data and variable types
+* Operators `=` `|` `&` `~` `$` `[`
+
+
+## What you will learn
+* Basic data management
+  * import
+  * explore
+  * clean
+  * tidy
+  * export
+* Classical statistical analysis of categorical variables
+  * chi-squared test
+  * test for trend
+  * OR
+  * adjusted OR
+  * OR with logistic regression
+
+-------------------------------------------------------------------------------
+
+## 0. Load packages
+
+```{r message=FALSE, warning=FALSE}
+# Load packages
+library(haven)
+library(magrittr)
+library(epitools)
+library(epiDisplay)
+library(pubh)
+library(rstatix)
+library(tidyverse)
+
+# Limit significant digits to 2, remove scientific notation
+options(digits = 2, scipen = 999)
+```
+
+
+# Basic data management
+
+## 1. Change the default directory
+
+If you use an .Rmd notebook like this one, you don't need to change directory – R assumes the default directory is the directory where the .Rmd is kept.
+
+
+## 2. Import and explore a .dta dataset
+
+The function `read_dta()` is from package {haven}.
+```{r}
+mwanza <- read_dta("mwanza.dta")
+```
+
+Unfortunately, Stata help files cannot be accessed in R. Key points regarding this dataset:
+- Case-control study (not matched)
+- Cases: women aged >=15 years living with HIV
+- Controls: random sample of HIV-negative women
+- Cases and controls were interviewed about potential risk factors for HIV
+- All variables are categorical and there are no value labels.
+
+To look at the variables and their types:
+```{r}
+# Variable names
+mwanza %>% names()
+
+# Variable names, types, and first values
+mwanza %>% glimpse()
+
+# Visualise the whole dataset, including variable labels
+mwanza %>% View()
+```
+
+
+## 3. Function syntax and getting help
+
+The general syntax in R is:
+`function(argument1, argument2)`
+Arguments are always separated by a comma.
+Unlike Stata, R can use multiple datasets at the same time, which means that you always need to specify the dataset:
+`function(dataset)`
+With package {tidyverse}, this can be written as:
+`dataset %>% function()`
+```{r}
+# These two are equivalent
+names(mwanza)
+mwanza %>% names()
+```
+
+To use a variable, you still need to specify which dataset it is from:
+`function(dataset$variable1)`
+With package {magrittr}, this can be written as:
+`dataset %$% function(variable1)`
+
+For example, to tabulate education by HIV status with column percents, you can use the `tabpct()` function:
+```{r}
+# These two are equivalent
+tabpct(mwanza$ed, mwanza$case, percent = "col", graph = F)
+mwanza %$% tabpct(ed, case, percent = "col", graph = F)
+
+# Another option
+mwanza %$% epitable(case, ed)
+```
+
+Unlike Stata, you can't abbreviate function or variable names. But if you start typing a variable in a dataset, RStudio will guess what it is and you can select it by pressing Tab and then Enter.
+
+You can filter rows and select columns with functions from package {dplyr}, part of the {tidyverse}.
+For example, to do the same tabulation but only in those aged less than 30, you would type:
+```{r}
+mwanza %>%
+  filter(age1 <= 3) %$%
+  tabpct(ed, case, percent = "col", graph = F)
+```
+
+I'm not sure what the equivalent for `by varlist1:` is in R – presumably, you would need some sort of iteration, like a `for` loop, which I think is beyond the scope of ASME.
+
+To get help about a function or a package, you put a question mark and then the name of that function/package:
+```{r}
+?View
+```
+There is also a lot of help online - if you get an error, try googling the error.
+
+
+## 4. Saving the results
+
+Whenever you save the .Rmd notebook, a record will be created in the same folder – its file format will depend on what's written in the "output:" field at the top of the .Rmd; this one produces an html file.
+
+
+## 5a: Factor variables
+
+R is more efficient if you tell it that variables with values 0/1/2/3 are in fact categorical and not numerical.
+```{r}
+# Create a vector of categorical variable names
+categ <-
+  c(
+    "comp",
+    "case",
+    "ed",
+    "eth",
+    "rel",
+    "msta",
+    "bld",
+    "inj",
+    "skin",
+    "fsex",
+    "npa",
+    "pa1",
+    "usedc",
+    "ud",
+    "ark",
+    "srk",
+    "ed2"
+  )
+
+# Make them all categorical
+mwanza[categ] <- lapply(mwanza[categ], as.factor)
+```
+
+
+## 5b. Creating and recoding variables
+
+The variable `age1` is coded in groups:
+1: 15-19, 2: 20-24, 3: 25-29, 4: 30-34, 5: 35-44, 6: 45-54
+
+The variable `ed` represents year of education, coded as 1: none, 2: 1-3 years, 3: 4-6 years, 4: 7+ years
+
+The variable `ed2` is binary; 0: none, 1: 1+ years. The variable `npa` represents lifetime number of sexual partners, coded as 1: 0-1, 2: 2-4, 3: 5-9, 4: 10+, 9: missing.
+
+To create a new variable (or change an existing one), you use the function `mutate()`. You can combine this with `as.factor()` and `case_when()` to relevel a categorical variable and give labels to the values in one single bit of code.
+You can then crosstabulate with `table(..., useNA = "ifany")` to ensure this went well.
+```{r}
+# Create a new variable, relevel and label
+mwanza %<>%
+  mutate(age2 =  as.factor(
+    case_when(
+      age1 <= 2 ~ "15-24",
+      age1 == 3 | age1 == 4 ~ "25-34",
+      age1 == 5 | age1 == 6 ~ "35+"
+    )
+  ))
+
+# Ensure it went ok
+mwanza %$% table(age1, age2, useNA = "ifany")
+```
+
+Missing values are recorded as NA in R. To tell R to treat the value of 9 as missing for variable `npa`, you have two options:
+a) assign the value NA to the subsetted filtered variable; b) use the `na_if()` function from the tidyverse, 
+```{r}
+# Option a)
+mwanza$npa[mwanza$npa == 9] <- NA
+
+# Option b)
+mwanza %<>% mutate(npa = na_if(npa, 9))
+
+# CHeck it worked ok
+mwanza %$% table(npa, useNA = "ifany")
+```
+
+To recode more than one variable I assume you need to use iteration, again.
+```{r}
+# Sorry, this is poor coding!
+mwanza %<>% mutate(msta = na_if(msta, 9))
+mwanza %$% table(msta, useNA = "ifany")
+
+mwanza %<>% mutate(eth = na_if(eth, 9))
+mwanza %$% table(eth, useNA = "ifany")
+
+mwanza %<>% mutate(rel = na_if(rel, 9))
+mwanza %$% table(rel, useNA = "ifany")
+```
+
+
+## 6. Saving the current dataset
+
+Don't overwrite the existing dataset, just make a copy.
+```{r}
+# Stata
+mwanza %>% write_dta("mwanza2.dta")
+```
+
+-------------------------------------------------------------------------------
+
+
+# Classical statistical analysis of categorical variables
+
+
+## 7. Chi-squared testing
+
+Many ways of doing this. The most similar to Stata is using the `cc()` function from {epiDisplay}. To show percentages, you need to use `tabpct()` instead.
+
+What is the effect of education on HIV status?
+```{r}
+mwanza %$% cc(ed, case, graph = F)
+```
+
+
+## 8. Test for trend
+
+Is there a linear association?
+Note that occasionally R can give you a very precise output, when Stata would say "p = 0.0000".
+```{r}
+# Test for trend
+mwanza %$% table(case, ed) %>%
+  prop_trend_test()
+```
+
+
+## 9. Odds ratios
+
+Unlike Stata, R can calculate OR for each level of exposure with just one command.
+```{r}
+# Stratified ORs
+odds_trend(case ~ ed, data = mwanza)
+```
+It looks like more educated people have higher odds of having HIV than less educated people.
+
+
+## 10. Adjusted odds ratios
+
+Let's now check if this association still remains after accounting for age.
+```{r}
+# Option A
+mwanza %$% epiDisplay::mhor(case, ed2, age2, graph = F)
+
+# Option B
+pubh::mhor(case ~ age2 / ed2, data = mwanza)
+```
+
+
+## 11. Odds ratios using logistic regression
+
+You can also use logistic regression without covariates to get the OR in all level; 
+```{r}
+# Logistic regression
+glm(case ~ ed,
+    family = "binomial",
+    data = mwanza) %>%
+  logistic.display()
+```
+
+You can also add a covariate by adding it after `+`.
+Note that the output provides not only the adjusted OR, but also the crude OR (without the covariate) 
+```{r}
+# Logistic regression with covariate
+glm(case ~ ed + age2,
+    family = "binomial",
+    data = mwanza) %>%
+  logistic.display()
+```
+```
+
+-------------------------------------------------------------------------------
