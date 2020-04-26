@@ -1,0 +1,205 @@
+---
+title: "3: Matched case-control studies and conditional logistic regression"
+subtitle: "R 4 ASME"
+author: Julian Matthewman [link](https://github.com/julianmatthewman)
+---
+
+-------------------------------------------------------------------------------
+
+## Prerequisites
+* For the SME practical on matched case-control studies see SME Practical 13: https://github.com/andreamazzella/R4SME
+
+## What you will learn
+Using conditional logistic regession to analyse matched case-control studies.
+
+-------------------------------------------------------------------------------
+
+## Data management
+
+```{r setup}
+knitr::opts_knit$set(root.dir = ("~/Dropbox/Documents/MSc Epidemiology/ASME/ASMEdata2020"))
+#This is a way of setting the working directory when working with chunks in R notebooks. Otherwise we would have to define the working directory separately for each chunk.
+```
+
+```{r message=FALSE, warning=FALSE}
+# Load packages
+library(haven)
+library(magrittr)
+library(epiDisplay)
+library(tidyverse)
+
+# Limit significant digits to 2, remove scientific notation
+options(digits = 2, scipen = 999)
+```
+
+```{r}
+# Data import
+# Etiher have the data files in the same directory as this R notebook or use setwd("yourdirectory/ASMEdata2020")
+diabraz <- read_dta("DIABRAZ.DTA")
+diabraz2 <- read_dta("DIABRAZ2.DTA")
+```
+
+```{r}
+glimpse(diabraz)
+glimpse(diabraz2)
+```
+
+As we can see all of the variables are stored in numeric format (dbl). Let's change them to factors, except set, pair, age and our outcome variable (case), which for some reason needs to remain in the dbl format for the regression commands to work.
+```{r}
+diabraz[-c(1:3, 24)] <- diabraz[-c(1:3, 24)] %>% map(as.factor)
+diabraz2[-c(1:3)] <- diabraz2[-c(1:3)] %>% map(as.factor)
+```
+
+
+Some useful info from the Stata HLP file:
+*BRAZILIAN CASE-CONTROL STUDY OF RISK FACTORS FOR INFANT DEATH FROM DIARRHOEA
+*case       1=case, 0=control
+*milkgp     1=breast only, 2=breast+other, 3=other only
+*bf         1=breastfed, 2=not breastfed
+*water      Piped water supply: 1=in house, 2=in plot, 3=none
+*wat2       1=in house/plot 2=none
+*agegp      Age group (months): 1=0-1, 2=2-3, 3=4-5, 4=6-8, 5=9-11
+*agegp2     1=0-2, 2=3-5, 3=6-11
+*milkgp     1=breast only, 2=breast+other, 3=other only
+
+
+# Question 1
+### Analyse the association between breast feeding (bf) and diarrhoea mortality.
+We start off by crosstabulating our outcome (case) and our exposure (bf), looking at row percentages.
+```{r}
+diabraz %$% tabpct(case, bf, percent = "row", graph = FALSE)
+```
+
+Then we estimate the odds ratio, calculate a confidence interval for the OR, and test the null hypothesis of no association. This will give us a long list of strata (since each set is one stratum) and the MH adjusted OR right at the bottom.
+```{r}
+diabraz %$% mhor(case, bf, pair)
+```
+
+Now let's try using conditional logistic regression. This should give us the same OR as the MH method above. We can use the summary() function which gives us the coefficients and the exponentials of the coefficients (which we know are the ORs) as well as the confidence interval (lower .95 & upper .95), the p value from the Wald test (Pr(>|z|)) and the p value from the Likelihood ratio test.
+Alternatively we could use the clogistic.display() function from epiDisplay, which gives a slightly simpler output.
+```{r}
+clogit(case ~ bf + strata(set),
+       data = diabraz) %>%
+    summary()
+```
+    
+
+
+# Question 2
+
+### i) Were children with a piped water supply to the house at lower risk than those with a supply to the plot?
+Now using the full dataset (diabraz2) use the following chunk to write down a model to answer the above question. Just to remind you, water has 3 levels (1=in house, 2=in plot, 3=none) and wat2 has 2 levels (1=in house/plot 2=none). So if you are using the variable water to fit your model and you only see 1 OR in the output something is wrong! This is because all of the data is coded as integers. Try using as.factor() (kind of like i. in Stata) to specify that a variable is a factor (Strangely this is only important for variables with more than 2 levels).
+
+```{r}
+model1 <- clogit(.....)
+summary(model1)
+```
+
+We could also answer this question comparing two different models using a likelihood ratio test. Fit a second model and compare them using the lrtest() command:
+```{r}
+.....
+```
+
+Alternatively, the analysis can be performed by restricting to those who had piped water (ie. excluding group 3). Try doing this using subsetting or filtering the data using filter(). If you do use filter() be aware that filtering out values of a certain level will not drop that level, i.e.: you will end up with an unused level. This can cause problems; using droplevels() gets rid of unused levels.
+```{r}
+filtered <- .....
+model3 <- clogit(.....,data = filtered)
+summary(model3)
+```
+
+
+### ii) Did the effect of water supply (on diarrhoea) vary with age of the child?
+Here we need work with interaction terms. We use * insted of + between two variables to allow for interaction. Try answering the above question (i.e. do a test for interaction).
+```{r}
+.....
+```
+
+
+
+# Question 3
+###Examine the effects of infant feeding practices on the risk of death from diarrhoea
+Using the full dataset (DIABRAZ2.DTA), use the variable milkgp to examine the effects of infant feeding practices on the risk of death from diarrhoea. Start with getting the crude OR, then explore the confounding effect of age. Decide on which of the age variables (agegp or agegp) is a better fit. Then explore the effect of other potential confounders such as sex, mother's educatin, ...
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Solutions
+## Question 2
+### i)
+```{r}
+model1 <- clogit(case ~ water + strata(set) ,data = diabraz2)
+summary(model1)
+```
+
+```{r}
+model2 <- clogit(case ~ wat2 + strata(set),data = diabraz2)
+summary(model2)
+
+lrtest(model1, model2)
+```
+
+```{r}
+filtered <- filter(diabraz2, water == 1 | water == 2) %>% droplevels()
+model3 <- clogit(case ~ water + strata(set),data = filtered)
+summary(model3)
+```
+
+### ii)
+```{r}
+model4 <- clogit(case ~ water + agegp2 + strata(set),data = diabraz2)
+clogistic.display(model4)
+model5 <- clogit(case ~ water * agegp2 + strata(set), data = diabraz2)
+clogistic.display(model5)
+lrtest(model4, model5)
+```
+
+## Question 3
+```{r}
+#crude
+clogit(case ~ as.factor(milkgp) + strata(set), data = diabraz2) %>% summary()
+
+#adjusted for sex
+clogit(case ~ as.factor(milkgp) + sex + strata(set), data = diabraz2) %>% summary()
+
+#adjusted for agegp2
+clogit(case ~ milkgp + agegp2 + strata(set), data = diabraz2) %>% summary()
+
+#adjusted for age
+clogit(case ~ milkgp + agegp + strata(set), data = diabraz2) %>% summary()
+
+#adjusted for age and mothers education
+clogit(case ~ milkgp + agegp + meduc + strata(set), data = diabraz2) %>% summary()
+```
+
