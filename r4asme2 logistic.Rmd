@@ -1,5 +1,5 @@
 ---
-title: "2: Logistic regression"
+title: "2: Review of logistic regression"
 subtitle: "R 4 ASME"
 author: Andrea Mazzella [(github)](https://github.com/andreamazzella)
 output: html_notebook
