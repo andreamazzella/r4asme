@@ -21,13 +21,13 @@ This is a whirlwind summary of the four SME topics on logistic regression.
 
 ```{r message=FALSE, warning=FALSE}
 # Load packages
-library(haven)
-library(magrittr)
-library(epitools)
-library(epiDisplay)
-library(pubh)
-library(rstatix)
-library(tidyverse)
+library("haven")
+library("magrittr")
+library("epitools")
+library("epiDisplay")
+library("pubh")
+library("rstatix")
+library("tidyverse")
 
 # Limit significant digits to 2, remove scientific notation
 options(digits = 2, scipen = 999)
