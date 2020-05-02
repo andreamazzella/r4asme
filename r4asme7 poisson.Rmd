@@ -1,0 +1,287 @@
+---
+title: "7: Poisson regression in cohort studies"
+subtitle: "R 4 ASME"
+authors: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella) & Lakmal
+output: html_notebook
+---
+
+-------------------------------------------------------------------------------
+
+## What you will learn
+
+* Poisson regression models
+ - simple
+ - adjusting for covariates
+ - checking for interaction
+ - checking for linear associations
+
+-------------------------------------------------------------------------------
+
+## 0. Packages and options
+
+```{r message=FALSE, warning=FALSE}
+# Load packages
+library("haven")
+library("magrittr")
+library("survival")
+library("summarytools")
+library("epiDisplay")
+library("tidyverse")
+
+# Limit significant digits to 3, remove scientific notation
+options(digits = 3, scipen = 999)
+```
+
+-------------------------------------------------------------------------------
+
+
+## 1. Data import and exploration
+
+Get ondrate.dta in the same folder as this .Rmd notebook and import it.
+This dataset contains information from a cohort study on ~1500 people living in Nigeria, on the effect of onchocerciasis (river blindness, a parasitic infection) on optic nerve disease.
+
+```{r}
+ond <- read_dta("ondrate.dta") %>% mutate_if(is.labelled, as_factor)
+```
+
+Explore the dataset.
+
+```{r}
+View(ond)
+glimpse(ond)
+table(ond$sex, useNA = "ifany")
+```
+
+* Outcome: `disc2` (optic nerve disease)
+* Exposure: `mfpermg` (microfilariae per mg, a measure of severity of the onchocercal infection)
+* Confounders: `age` (at start), `sex`
+* Time:
+ - `pyrs` (person-years, already calculated)
+ - `start` (date of entry into study)
+ - `end` (date of exit from study)
+
+Thankfully, this dataset is mostly labelled. We only need to do a tiny bit of data management.
+```{r}
+ond %<>%
+  mutate(id = as.factor(id),
+         disc2 = as.integer(disc2),
+         sex = as.factor(case_when(sex == 1 ~ "male", sex == 2 ~ "female")))
+summary(ond)
+```
+
+-------------------------------------------------------------------------------
+
+
+## 2. Calculation of incidence rates
+
+Calculate incidence rates of Optic Nerve Disease by age, sex, and microfilarial load.
+
+```{r}
+# Create survival object
+ond_surv <- ond %$% Surv(time = as.numeric(start) / 365.25, 
+                         time2 = as.numeric(end) / 365.25, 
+                         event = disc2)
+# Rates by age
+pyears(ond_surv ~ age, ond, scale = 1) %>% summary(n = F, rate = T, ci.r = T, scale = 1000)
+
+# Rates by sex
+pyears(ond_surv ~ sex, ond, scale = 1) %>% summary(n = F, rate = T, ci.r = T, scale = 1000)
+
+# Rates by microfilarial load
+pyears(ond_surv ~ mfpermg, ond, scale = 1) %>% summary(n = F, rate = T, ci.r = T, scale = 1000)
+```
+We can see that the incidence increases dramatically with age, it's about the same among females and males, and increases when microfilarial load is above 10.
+
+-------------------------------------------------------------------------------
+
+
+## 3. Poisson regression
+
+Now perform the same three analyses but with Poisson regression.
+Poisson regression in R uses the `glm()` formula – but it also needs to include `offset(log(<pyears>))` as a covariate. Clever statisticians, can you please explain what this means mathematically?
+
+epiDisplay has a function to simplify the Poisson regression input: `idr.display()`.
+
+```{r}
+# Age
+glm(disc2 ~ age + offset(log(pyrs)),
+    family = "poisson",
+    data = ond) %>% idr.display()
+```
+You can verify that these rate ratios are the same as those derived by classical analysis (by dividing the rates).
+
+```{r}
+# Sex
+glm(disc2 ~ sex + offset(log(pyrs)),
+    family = "poisson",
+    data = ond) %>% idr.display()
+
+# Microfilarial load
+glm(disc2 ~ mfpermg + offset(log(pyrs)),
+    family = "poisson",
+    data = ond) %>% idr.display()
+```
+
+-------------------------------------------------------------------------------
+
+
+## 4. Potential confounders
+
+Is either age or sex associated with microfilarial load? Cross-tabulate them and check the percentages.
+
+```{r}
+ond %$% ctable(age, mfpermg)
+ond %$% ctable(sex, mfpermg)
+```
+Older people tend to have higher infection markers: age is a potential confounder.
+The sex distribution is balanced, so sex is unlikely to be a confounder.
+
+-------------------------------------------------------------------------------
+
+
+5. Poisson regression with covariates
+
+Adjust for age, sex, and both with Poisson regression. Is there any indication of confounding?
+```{r}
+# Adjusting for age only
+glm(disc2 ~ mfpermg + age + offset(log(pyrs)),
+    family = "poisson",
+    data = ond) %>% idr.display()
+
+# Adjusting for sex only
+glm(disc2 ~ mfpermg + sex + offset(log(pyrs)),
+    family = "poisson",
+    data = ond) %>% idr.display()
+
+# Adjusting for both age and sex
+glm(disc2 ~ mfpermg + age + sex + offset(log(pyrs)),
+    family = "poisson",
+    data = ond) %>% idr.display()
+```
+The age-adjusted rate ratios for microfilarial loads are reduced: it is possible that age is a confounder. The RRs remain almost the same after adjusting for sex.
+
+-------------------------------------------------------------------------------
+
+
+## 6. Poisson and Interaction
+
+As logistic regression, Poisson models also assume that there is no interaction, so you need to check this assumption with a likelihood ratio test. You do this exactly like you do with logistic regression.
+
+Check for interaction between microfilarial load and 1. age, 2. sex.
+
+```{r}
+# Interaction between MF and age
+mf_age_simple <- glm(disc2 ~ mfpermg + age + offset(log(pyrs)),
+                     family = "poisson",
+                     data = ond)
+mf_age_intera <- glm(disc2 ~ mfpermg * age + offset(log(pyrs)),
+                     family = "poisson",
+                     data = ond)
+lrtest(mf_age_intera, mf_age_simple)
+```
+No evidence of interaction (however, there are 6 degrees of freedom – test might be underpowered)
+
+```{r}
+# Interaction between MF and sex
+mf_sex_simple <- glm(disc2 ~ mfpermg + sex + offset(log(pyrs)),
+                     family = "poisson",
+                     data = ond)
+mf_sex_intera <- glm(disc2 ~ mfpermg * sex + offset(log(pyrs)),
+                     family = "poisson",
+                     data = ond)
+lrtest(mf_sex_intera, mf_sex_simple)
+```
+No evidence of interaction between MF and sex.
+
+-------------------------------------------------------------------------------
+
+## 7. Poisson and linearity
+
+Assess for a linear relationship with age by treating it as numerical (as opposed to categorical) in a simple Poisson model.
+You just need to use `as.integer()` with variable age. Unfortunately `idr.display()` breaks with quantiative exposures, so you need to extract the RR manually.
+Also, *issue*, I don't know how to get the 95% CIs manually. There are two functions that are potentially relevant (`epiDisplay::ci.poisson()` and `survival::cipoisson()`, but I can't get them to work).
+```{r}
+# Age as numerical
+age_linear <- glm(disc2 ~ as.integer(age) + offset(log(pyrs)),
+                     family = "poisson",
+                     data = ond)
+
+# Get RR by exponentiating the log(RR)
+exp(age_linear$coefficients)
+
+# Not sure how to calculate 95% CI from the log(SE)?
+summary(age_linear)
+
+# Age as categorical
+age_catego <- glm(disc2 ~ age + offset(log(pyrs)),
+                     family = "poisson",
+                     data = ond)
+# LRT
+lrtest(age_catego, age_linear)
+```
+There is no evidence against a linear increase in the log(rate) from one age group to the next, so it's okay to use age as a continuous variable.
+
+-------------------------------------------------------------------------------
+
+
+## 8. Back to Whitehall
+
+Open whitehal.dta and use Poisson regression to examine the effect of job grade on cardiac mortality, adjusting for ageband and smoking status simultaneously. 
+```{r}
+whitehall <- read_stata("whitehal.dta")
+glimpse(whitehall)
+```
+
+The whitehall dataset needs massive data management (see session 6) but we'll now do the bare minimum for these Poisson models:
+- age bands as a factor variable; (NB: I suspect this is done via an exhausting Lexis expansion in the Stata solutions, but age at entry will do...)
+- job grade as a binary factor variable;
+- number of person-years for each person;
+- smoking status as a 3-level factor variable.
+```{r}
+# Explore age distribution
+hist(whitehall$agein)
+
+# Categorise age in 5-year bands
+whitehall$ageband <- cut(whitehall$agein, seq(40, 70, 5)) %>% as.factor()
+
+# Check it worked ok
+summary(whitehall$ageband)
+
+# Factorise job grade
+whitehall$grade <- as.factor(whitehall$grade)
+
+# Create person-years of follow up
+whitehall$pyrs <- whitehall %$% as.numeric(timeout - timein)
+
+# Group all current smokers together
+whitehall$smok3 <- ifelse(whitehall$smok == 1, 1,
+                          ifelse(whitehall$smok == 2, 2,
+                                 3)) %>% as.factor()
+```
+
+Now we can fit the models.
+```{r}
+# Model including job grade
+with_grade <- glm(chd ~ offset(log(pyrs)) + grade + smok3 + ageband,
+  family = poisson(),
+  data = whitehall)
+idr.display(with_grade)
+
+# Model without job grade
+wout_grade <- glm(chd ~ offset(log(pyrs)) + smok3 + ageband,
+  family = poisson(),
+  data = whitehall)
+idr.display(wout_grade)
+
+# LRT
+lrtest(with_grade, wout_grade)
+```
+
+--------------------------------------------------------------------------------
+
+
+
+
+
+
+

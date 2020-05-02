@@ -1,0 +1,305 @@
+---
+title: "6: Stratifying by time"
+subtitle: "R 4 ASME"
+author: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+output: html_notebook
+---
+
+-------------------------------------------------------------------------------
+
+## What you will learn
+
+* Create a "survival object" to analyse cohort studies
+* Calculate incidence rates from a cohort study
+* Stratify rates
+ - by a categorical variable
+ - by a time variable (by doing a Lexis expansion)
+
+-------------------------------------------------------------------------------
+
+## 0. Packages and options
+
+```{r message=FALSE, warning=FALSE}
+# Load packages
+library("haven")
+library("magrittr")
+library("survival")
+library("epiR")
+library("tidyverse")
+
+# Limit significant digits to 3, remove scientific notation
+options(digits = 3, scipen = 999)
+```
+
+
+## 1. Data management
+
+Import and explore `whitehal.dta`. These are the variables of interest:
+* *Outcome*: death from cardiac event (`chd`)
+* *Exposure*: job grade (`grade4`, `grade`)
+* *Dates*
+ * Date of birth: `timebth`
+ * Date of entry: `timein`
+ * Date of exit: `timeout`
+* *Confounder*: smoking status (`smok`)
+```{r}
+# Import the dataset
+whitehall <- read_stata("whitehal.dta")
+
+# Explore data types
+glimpse(whitehall)
+```
+
+As you can see, there are no value labels, so I'll add them using the dataset help file.
+```{r data_management}
+# Rename and factorise variables, label values
+whitehall %<>%
+  mutate(
+    id = as.integer(id),
+    all = as.integer(all), # NB outcomes must remain numerical
+    chd = as.integer(chd),
+    grade4 = factor(
+      grade4,
+      levels = c(1, 2, 3, 4),
+      labels = c("admin", "profess", "clerical", "other")),
+    smok = factor(
+      smok,
+      levels = c(1, 2, 3, 4, 5),
+      labels = c("never",
+                 "ex",
+                 "1-14/day",
+                 "15-24/day",
+                 "25+/day")),
+    grade = factor(
+      grade,
+      levels = c(1, 2),
+      labels = c("adm/prof",
+                 "cler/other")),
+    cholgrp = factor(cholgrp),
+    sbpgrp = factor(sbpgrp)
+  )
+
+# Check it worked ok
+glimpse(whitehall)
+
+#Summarise
+summary(whitehall)
+```
+
+-------------------------------------------------------------------------------
+
+
+## 2. Calculating rates and RR
+
+Calculate rates stratified by exposure (the two grades of employment: `grade`).
+
+You create a survival object with `Surv()`; it contains duration of follow-up and status at end of follow-up. [equivalent to `stset` in Stata]
+
+You then calculate stratified rates `pyears()`: in the formula, first you put the survival object you have just created, and then the stratification; you then pipe this into `summary()` [equivalent to `strate` in Stata].
+
+(NB: `pyears()` automatically scales from days to years - if you don't want this to happen, for example because your Surv object is already set in years, you need to indicate it with argument `scale = 1`.)
+
+```{r}
+# Create survival object
+surv_white <- whitehall %$% Surv(time = as.numeric(timein) / 365.25, 
+                                 time2 = as.numeric(timeout) / 365.25, 
+                                 event = chd)
+# Calculate rates
+pyears(surv_white ~ grade, data = whitehall, scale = 1) %>%
+  summary(n = F, rate = T, ci.r = T, scale = 1000)
+```
+
+
+Calculate the cardiac mortality rate ratio in these two job groups:
+```{r}
+8.8/4.4
+```
+
+-------------------------------------------------------------------------------
+
+## 3. Age as timescale
+
+In order to change the timescale to current age, we need to change the `origin` argument in the `Surv()` function to time of birth.
+```{r}
+# Create survival object
+surv_white_age <- whitehall %$% Surv(time = as.numeric(timein) / 365.25, 
+                                     time2 = as.numeric(timeout) / 365.25, 
+                                     event = chd,
+                                     origin = as.numeric(timebth) / 365.25) ###
+
+# Check rates haven't changed
+pyears(surv_white_age ~ grade, data = whitehall, scale = 1) %>%
+  summary(n = F, rate = T, ci.r = T, scale = 1000)
+```
+
+-------------------------------------------------------------------------------
+
+
+## 4-7. Lexis expansion
+
+Now let's split the follow-up times into intervals that are specific to sidderent agebands.
+
+To check what R is doing, we'll check record 5001 before and after splitting.
+```{r}
+whitehall %>% filter(id == "5001") %>% select(-2, -(4:7), -(9:11))
+```
+
+Use the `survSplit()` function to create 5-year groups of current age between age 50 and 80, and 10-year groups for the youngest and oldest groups [equivalent to `stsplit` in Stata].
+```{r}
+# Split
+white_split <- survSplit(surv_white_age ~ .,
+                         data = whitehall,
+                         cut = c(40, seq(50, 80, 5), 90),
+                         episode = "ageband")
+```
+
+What happened to person record 5001?
+It has been expanded into five, and two new columns have been added, indicating the ageband.
+```{r}
+white_split %>% filter(id == "5001") %>% select(-2, -(4:7), -(9:11))
+```
+
+The Lexis expansion won't change the original dataset, therefore the information on events and rates isn't corrupted.
+
+```{r}
+# Stratify by grade
+pyears(surv_white_age ~ grade,
+       data = white_split, 
+       scale = 1) %>%
+  summary(n = F, rate = T, ci.r = T, scale = 1000)
+```
+
+-------------------------------------------------------------------------------
+
+
+## 8. Stratifying by age band
+
+Now we can use this newly created variable to stratify the rates by age band.
+What is the effect of age on cardiac-related mortality?
+```{r}
+# Stratify by ageband
+pyears(surv_white_age ~ ageband,
+       data = white_split,
+       scale = 1) %>%
+  summary(n = F, rate = T, ci.r = T)
+```
+
+-------------------------------------------------------------------------------
+
+
+## 9. Further stratification
+
+You can stratify by another categorical variable by adding it after a + in the right hand-side of the formula in `pyears()`. You then change the options in `summary()` to hide events and person-time. There are options to calculate RR insead of showing the risks, but I can't get them to work.
+
+
+```{r}
+rates_age_grade <- pyears(surv_white_age ~ ageband + grade,
+                          data = white_split,
+                          scale = 1)
+
+summary(rates_age_grade, n = F, event = F, pyears = F, rate = T, scale = 1000)
+
+# broken code
+# summary(py, n = F, event = F, pyears = F, rr = T, ci.rr = T, scale = 1000)
+?survival::summary.pyears
+```
+
+
+*ISSUE*
+
+I don't know how to use this to calculate an overall MH rate ratio, MH χ², and test for interaction [stuff that Stata's `stmh` does as part of the same command]
+
+`epiR::epi.2by2()` apparently can calculate MH rate ratios by setting the option "method" to "cohort.time". The downside: it requires a very specific input, a 3-way table containing cases and person-years stratified by ageband and the other categorical variable, and I'm not sure how to convert the output from `pyears()` into this very specific format.
+```{r}
+pyears(surv_white_age ~ grade + ageband,
+       data = white_split,
+       scale = 1) %>%
+  summary(n = F)
+```
+
+-------------------------------------------------------------------------------
+
+
+# Optional exercises
+
+
+## 10. Smoking
+
+Examine the effect of smoking on cardiac-related mortality.
+First, relevel the smoking variable into three: never/ex/current smokers.
+```{r}
+# Check levels
+whitehall %$% table(smok, useNA = "ifany")
+
+# Recode
+whitehall %<>%
+  mutate(smok3 = as.factor(case_when(smok == "never" ~ "never",
+                                     smok == "ex" ~ "ex",
+                                     smok == "1-14/day" ~ "current",
+                                     smok == "15-24/day" ~ "current",
+                                     smok == "25+/day" ~ "current")))
+
+# Order levels
+whitehall$smok3 <- fct_relevel(whitehall$smok3, "never", "ex", "current")
+
+# Check it worked
+whitehall %$% table(smok3, smok)
+```
+
+```{r}
+# Rates stratified by smoking
+pyears(surv_white_age ~ smok3, data = whitehall, scale = 1) %>%
+  summary(n = F, rate = T, ci.r = T, scale = 1000)
+```
+The mortality rate is higher in smokers than in never-smokers.
+
+Does smoke confound the relationship between job grade and cardiac-related mortality?
+```{r}
+# Create a new survival object
+surv_white_age2 <- whitehall %$% Surv(time = as.numeric(timein) / 365.25, 
+                                     time2 = as.numeric(timeout) / 365.25, 
+                                     event = chd,
+                                     origin = as.numeric(timebth) / 365.25)
+# Split
+white_split <- survSplit(surv_white_age ~ .,
+                         data = whitehall,
+                         cut = c(40, seq(50, 80, 5), 90),
+                         episode = "ageband")
+
+# Stratified rates
+pyears(surv_white_age2 ~ smok3 + grade,
+       data = white_split2,
+       scale = 1) %>% 
+  summary(n = F, event = F, pyears = F, rate = T, scale = 1000)
+
+5.1/1.3
+7.4/4.5
+10.6/6.3
+```
+
+
+-------------------------------------------------------------------------------
+
+
+## 11. Statifying on three variables
+
+Examine the effect of job grade on cardiac mortality, adjusting for both age and smoking at the same time. What can you conclude?
+*ERROR* code breaks
+```{r}
+# Stratified rates
+# pyears(surv_white_age2 ~ ageband + grade + smok3,
+#       data = white_split2,
+#       scale = 1) %>% 
+#  summary(n = F, event = F, pyears = F, rate = T, scale = 1000)
+```
+
+-------------------------------------------------------------------------------
+
+
+## 12. Standardised mortality rate
+
+CBA
+```{r}
+
+```
+
