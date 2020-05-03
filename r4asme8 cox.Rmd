@@ -174,13 +174,15 @@ trin_surv_age <- trin %$% Surv(as.numeric(timein) / 365.25,
                                death,
                                origin = as.numeric(timebth) / 365.25)
 
-#-- You may prefer to create some intermediate object abd have a simpler Surv():
-#trin$timein2 <- as.numeric(timein) / 365.25
-#trin$timeout2 <- as.numeric(timeout) / 365.25
-#trin$timebth2 <- as.numeric(timebth) / 365.25
-#trin_surv_age2 <- trin %$% Surv(timein2, timeout2, death, origin = timebth2)
+#-- You may prefer to create some intermediate object and have a simpler Surv():
+
+#trin$timein_yr <- as.numeric(timein) / 365.25
+#trin$timeout_yr <- as.numeric(timeout) / 365.25
+#trin$timebth_yr <- as.numeric(timebth) / 365.25
+#trin_surv_age_yr <- trin %$% Surv(timein_yr, timeout_yr, death, origin = timebth_yr)
+
 #-- Another way of calculating these years:
-#trin$timein2 <- Epi::cal.yr(trin$timein, format="%d/%m/%Y")
+#trin$timein_yr <- Epi::cal.yr(trin$timein, format="%d/%m/%Y")
 
 # Cox using the timeage as the time 
 cox_smok3_age <- coxph(trin_surv_age ~ smok3, data = trin)
@@ -385,7 +387,7 @@ split_white$age <- factor(split_white$age,
 View(split_white)
 table(split_white$age, useNA = "ifany")
 
-split_white$pyears <- split_white %$% as.numeric(timeout-timein)/365.25
+split_white$pyears <- split_white %$% as.numeric(timeout - timein) / 365.25
 
 #-- BROKEN Fit a Poisson model
 glm(chd ~ offset(log(pyears)) + grade + age,   # period goes here
@@ -397,11 +399,17 @@ glm(chd ~ offset(log(pyears)) + grade + age,   # period goes here
 
 *Same workaround* Use the Epi package.
 
-*Issue* some code possibly further down is broken – I suspect this is bc you used the whitehall object that you had changed in some way in another Rmd?
-
 ```{r LM}
 # Create a variable with follow up time
+# For the difftime function enter the two dates that we want the difference between - NB the arguments must be in as.date class
 whitehall$follow.up <- difftime(whitehall$timeout, whitehall$timein, units = c("days"))/365.25
+
+# Convert all the date variables for decimals for all Surv/Lexis objects, object spltting, COx/Poission regression
+whitehall$timein <- cal.yr(whitehall$timein, format="%d/%m/%Y")
+whitehall$timeout <- cal.yr(whitehall$timeout, format="%d/%m/%Y")
+whitehall$timebth <- cal.yr(whitehall$timebth, format="%d/%m/%Y")
+# The follow up variable can be transferred to numeric using the following command
+whitehall$follow.up <- as.numeric(whitehall$follow.up)
 
 # Cox model to estimate the effect of grade - NB cox surival object with follow up time as time scale
 coxph(Surv(whitehall$follow.up, whitehall$chd) ~ grade, data= whitehall)
@@ -410,13 +418,14 @@ coxph(Surv(whitehall$follow.up, whitehall$chd) ~ grade, data= whitehall)
 coxph(Surv(whitehall$timein, whitehall$timeout, whitehall$chd, origin = whitehall$timebth) ~ grade, data= whitehall)
 
 # There is a significant change in the HR once changing the time scale from follow up time to age - therefore there is evidence of confodunding
-whitehall$follow.up <- as.numeric(whitehall$follow.up)
+
+
 
 # Poisson regression 
 whitehall.m1 <- glm(chd ~ offset(log(follow.up)) + as.factor(grade), family = poisson(), data = whitehall)
 exp(whitehall.m1$coefficients)
 
-# Lexis expansion of the whitehall datasex
+# Lexis expansion of the whitehall dataset 
 Lexis.whitehall.chd <- whitehall %>% Lexis(entry = list(per=timein), exit = list( per=timeout, age = timeout - timebth), exit.status = chd, data = . )
 
 # Lexis split by age
