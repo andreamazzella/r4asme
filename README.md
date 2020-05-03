@@ -4,7 +4,7 @@ R notebooks translating the LSHTM's "Advanced Statistical Methods in Epidemiolog
 1. Classical analysis of categorical variables
 2. Review of logistic regression
 3. Conditional logistic regression
-6. Startifying by time
+6. Stratifying by time
 7. Poisson rgeression in cohort studies
 8. Cox regression in cohort studies
 9. Further analysis with Cox regression 
