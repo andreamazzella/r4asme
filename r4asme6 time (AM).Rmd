@@ -73,8 +73,8 @@ whitehall %<>%
     grade = factor(
       grade,
       levels = c(1, 2),
-      labels = c("adm/prof",
-                 "cler/other")),
+      labels = c("higher",
+                 "lower")),
     cholgrp = factor(cholgrp),
     sbpgrp = factor(sbpgrp)
   )
@@ -298,8 +298,12 @@ Examine the effect of job grade on cardiac mortality, adjusting for both age and
 
 ## 12. Standardised mortality rate
 
-CBA
+
 ```{r}
 
 ```
 
+-------------------------------------------------------------------------------
+
+## Acknowledgements
+Thank you Prof Ruth Keogh @LSHTM, for pointing me at the right direction with regards to `survSplit()` and `pyears()`.

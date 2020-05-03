@@ -199,18 +199,15 @@ No evidence of interaction between MF and sex.
 
 Assess for a linear relationship with age by treating it as numerical (as opposed to categorical) in a simple Poisson model.
 You just need to use `as.integer()` with variable age. Unfortunately `idr.display()` breaks with quantiative exposures, so you need to extract the RR manually.
-Also, *issue*, I don't know how to get the 95% CIs manually. There are two functions that are potentially relevant (`epiDisplay::ci.poisson()` and `survival::cipoisson()`, but I can't get them to work).
 ```{r}
 # Age as numerical
 age_linear <- glm(disc2 ~ as.integer(age) + offset(log(pyrs)),
                      family = "poisson",
                      data = ond)
 
-# Get RR by exponentiating the log(RR)
+# Get HRs by exponentiating the log(HR)s
 exp(age_linear$coefficients)
-
-# Not sure how to calculate 95% CI from the log(SE)?
-summary(age_linear)
+confint(age_linear) %>% exp()
 
 # Age as categorical
 age_catego <- glm(disc2 ~ age + offset(log(pyrs)),
