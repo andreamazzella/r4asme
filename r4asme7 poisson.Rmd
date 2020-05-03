@@ -127,7 +127,7 @@ glm(disc2 ~ mfpermg + offset(log(pyrs)),
 
 ## 4. Potential confounders
 
-Is either age or sex associated with microfilarial load? Cross-tabulate them and check the percentages.
+Is either age or sex associated with microfilarial load? Cross-tabulate them and check the percentages. (I'm using a function from summarytools, you can also use table or tabpct)
 
 ```{r}
 ond %$% ctable(age, mfpermg)
@@ -206,7 +206,7 @@ age_linear <- glm(disc2 ~ as.integer(age) + offset(log(pyrs)),
                      data = ond)
 
 # Get HRs by exponentiating the log(HR)s
-exp(age_linear$coefficients)
+age_linear$coefficients %>% exp()
 confint(age_linear) %>% exp()
 
 # Age as categorical
@@ -275,10 +275,3 @@ lrtest(with_grade, wout_grade)
 ```
 
 --------------------------------------------------------------------------------
-
-
-
-
-
-
-

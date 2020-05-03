@@ -61,23 +61,18 @@ whitehall %<>%
     grade4 = factor(
       grade4,
       levels = c(1, 2, 3, 4),
-      labels = c("admin", "profess", "clerical", "other")),
+      labels = c("admin", "profess", "clerical", "other")
+    ),
     smok = factor(
       smok,
       levels = c(1, 2, 3, 4, 5),
-      labels = c("never",
-                 "ex",
-                 "1-14/day",
-                 "15-24/day",
-                 "25+/day")),
-    grade = factor(
-      grade,
-      levels = c(1, 2),
-      labels = c("higher",
-                 "lower")),
+      labels = c("never", "ex", "1-14/day", "15-24/day", "25+/day")
+    ),
+    grade = factor(grade,
+                   levels = c(1, 2),
+                   labels = c("higher", "lower")),
     cholgrp = factor(cholgrp),
-    sbpgrp = factor(sbpgrp)
-  )
+    sbpgrp = factor(sbpgrp))
 
 # Check it worked ok
 glimpse(whitehall)
@@ -206,7 +201,6 @@ summary(rates_age_grade, n = F, event = F, pyears = F, rate = T, scale = 1000)
 
 
 *ISSUE*
-
 I don't know how to use this to calculate an overall MH rate ratio, MH χ², and test for interaction [stuff that Stata's `stmh` does as part of the same command]
 
 `epiR::epi.2by2()` apparently can calculate MH rate ratios by setting the option "method" to "cohort.time". The downside: it requires a very specific input, a 3-way table containing cases and person-years stratified by ageband and the other categorical variable, and I'm not sure how to convert the output from `pyears()` into this very specific format.

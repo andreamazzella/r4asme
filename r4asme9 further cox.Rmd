@@ -59,8 +59,8 @@ diet <- read_dta("dietlsh.dta") %>% mutate_if(is.labelled, as_factor)
 glimpse(diet)
 
 diet %<>% mutate(hieng = factor(hieng,
-                               levels = c(0, 1),
-                               labels = c("normal", "high-energy")),
+                                levels = c(0, 1),
+                                labels = c("normal", "high-energy")),
                  fibre_cat = cut_number(fibre, 3))
 summary(diet$fibre_cat)
 summary(diet$fibre)
@@ -96,7 +96,7 @@ People following a high-energy diet half the rate of CHD than people not on that
 Cox regression carries an assumption that the rate ratio remains constant over time. We can check this visually with a Nelson-Aalen plot. Do you think the proportionality assumption is valid?
 
 N-A plots are built with function `ggsurvplot()` from package "survminer"; it uses ggplot to visualise survival objects made with `Surv()` and fitted to data with `survfit()`. Unlike Stata, the confidence interval bands are semi-transparent, which makes the graph much more readable.
-```{r}
+```{r message=FALSE, warning=FALSE}
 # Create Survfit object
 sf_diet <- survfit(surv_diet ~ hieng, data = diet)
 
@@ -164,7 +164,7 @@ surv_diet_age <- diet %$% Surv(time = as.numeric(doe) / 365.25,
 summary(surv_diet_age)
 ```
 
-```{r}
+```{r message=FALSE}
 # Nelson-Aalen plot
 sf_diet_age <- survfit(surv_diet_age ~ hieng, data = diet)
 ggsurvplot(sf_diet_age,
@@ -206,7 +206,7 @@ There is no evidence against proportionality using age as timescale.
 
 Investigate the effect of dietary fibre (`fibre_cat`) on CHD mortality, first with follow-up time scale.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # Create survfit object
 sf_diet_fibre <- survfit(surv_diet ~ fibre_cat, data = diet)
 

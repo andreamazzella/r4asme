@@ -144,26 +144,8 @@ Whenever you save the .Rmd notebook, a record will be created in the same folder
 R is more efficient if you tell it that variables with values 0/1/2/3 are in fact categorical and not numerical.
 ```{r}
 # Create a vector of categorical variable names
-categ <-
-  c(
-    "comp",
-    "case",
-    "ed",
-    "eth",
-    "rel",
-    "msta",
-    "bld",
-    "inj",
-    "skin",
-    "fsex",
-    "npa",
-    "pa1",
-    "usedc",
-    "ud",
-    "ark",
-    "srk",
-    "ed2"
-  )
+categ <- c("comp", "case", "ed", "eth", "rel", "msta", "bld", "inj", "skin",
+           "fsex", "npa", "pa1", "usedc", "ud", "ark", "srk", "ed2")
 
 # Make them all categorical
 mwanza[categ] <- lapply(mwanza[categ], as.factor)
@@ -188,9 +170,7 @@ mwanza %<>%
     case_when(
       age1 <= 2 ~ "15-24",
       age1 == 3 | age1 == 4 ~ "25-34",
-      age1 == 5 | age1 == 6 ~ "35+"
-    )
-  ))
+      age1 == 5 | age1 == 6 ~ "35+")))
 
 # Ensure it went ok
 mwanza %$% table(age1, age2, useNA = "ifany")
