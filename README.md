@@ -7,5 +7,6 @@ R notebooks translating the LSHTM's "Advanced Statistical Methods in Epidemiolog
 6. Startifying by time
 7. Poisson rgeression in cohort studies
 8. Cox regression in cohort studies
+9. Further analysis with Cox regression 
 
 Dev team: [Julian Matthewman](https://github.com/julianmatthewman), Lakmal M. and [Andrea Mazzella](https://github.com/andreamazzella).
