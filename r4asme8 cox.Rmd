@@ -271,14 +271,21 @@ pbc_split <- survSplit(surv_pbc ~ .,
 pbc_split$period <- factor(pbc_split$period,
                            levels = c(1, 2, 3, 4),
                            labels = c("0-2y", "2-4y", "4-6y", "6-12y"))
-View(pbc_split)
+#View(pbc_split)
 table(pbc_split$period, useNA = "ifany")
 
-# Fit a Poisson model
+#-- Broken -- Fit a Poisson model
 glm(death ~ offset(log(time)) + treat + logb0 + period,   # period goes here
     family = poisson(),
     data = pbc_split) %>%   # use the Lexis-split data, not the old one
   idr.display()
+
+#-- Also broken
+#strat <- glm(death ~ offset(log(time)) + treat + logb0 + strata(period),   # period goes here
+#             family = poisson(),
+#             data = pbc_split)
+#strat$coefficients %>% exp()
+#confint(strat) %>% exp()
 ```
 
 *Issue* Whilst the overall adjusted HR is similar to the Stata output, the HRs for the period bands are completely wrong. I have no idea why this happens?
@@ -329,12 +336,6 @@ whitehall <- read_stata("whitehal.dta")
 whitehall$grade <- factor(whitehall$grade,levels = c(1, 2), labels = c("higher", "lower"))
 
 glimpse(whitehall)
-
-# Create person-years of follow up
-#whitehall$pyrs <- whitehall %$% as.numeric(timeout - timein)
-
-# Group all current smokers together
-#whitehall$smok3 <- ifelse(whitehall$smok == 1, 1, ifelse(whitehall$smok == 2, 2,3)) %>% as.factor()
 ```
 
 Build a Cox model to estimate the effect of job grade (`grade`) on cardiac mortality (`chd`), first with the follow-up scale. Afterwards, assess whether age is a confounder with both Cox and Poisson techniques. The time variables are `timein`, `timeout` and `timebth`.
@@ -386,19 +387,19 @@ table(split_white$age, useNA = "ifany")
 
 split_white$pyears <- split_white %$% as.numeric(timeout-timein)/365.25
 
-# Fit a Poisson model
+#-- BROKEN Fit a Poisson model
 glm(chd ~ offset(log(pyears)) + grade + age,   # period goes here
     family = poisson(),
     data = split_white) %>%   # use the Lexis-split data, not the old one
   idr.display()
 ```
-*Same issue* as in line 260, adj HR estimate is similar but not the same, and the age variable HR is completely off.
+*Same issue* as in chunk "survSplit", adj HR estimate is similar but not the same, and the age variable HR is completely off.
 
 *Same workaround* Use the Epi package.
 
-*Issue* code in line 415 and possibly further down is broken – I suspect this is bc you used the whitehall object that you had somehow changed in another Rmd?
+*Issue* some code possibly further down is broken – I suspect this is bc you used the whitehall object that you had changed in some way in another Rmd?
 
-```{r}
+```{r LM}
 # Create a variable with follow up time
 whitehall$follow.up <- difftime(whitehall$timeout, whitehall$timein, units = c("days"))/365.25
 
@@ -430,18 +431,3 @@ exp(whitehall.m2$coefficients)
 ```
 
 -------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
