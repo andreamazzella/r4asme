@@ -1,0 +1,301 @@
+---
+title: "9: Further analysis with Cox regression"
+subtitle: "R 4 ASME"
+authors: Lakmal M. & Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+output: html_notebook
+---
+
+-------------------------------------------------------------------------------
+
+## What you will learn
+* Examine the proportionality assumption in Cox models
+ - graphically, with Nelson-Aalen plots
+ - with a test for interaction
+ - with a test for Martingale residuals
+* Cox regression with multiple covariates
+
+
+-------------------------------------------------------------------------------
+
+## 0. Packages and options
+
+```{r message=FALSE, warning=FALSE}
+# Load packages
+library("haven")
+library("magrittr")
+library("survival")
+library("survminer")
+library("epiDisplay")
+library("tidyverse")
+
+# Limit significant digits to 3, remove scientific notation
+options(digits = 3, scipen = 9)
+```
+
+-------------------------------------------------------------------------------
+
+
+# Diet and heart disease
+
+This dataset contains information on dietary energy intake and subsequent incidence of coronary heart disease.
+
+
+**Outcome*: `chd` (coronary heart disease mortality)
+**Exposure*: `hieng` (high-energy diet)
+**Time*:
+ -`doe` (date of entry)
+ -`dox` (date of exit)
+ -`dob` (date of birth)
+ -`agein` (age at entry)
+ -`ageout` (age at exit)
+ -`fup` (follow-up time)
+**Other*
+- `fibre` (daily dietary fibre, g)
+            
+Data import and management. The practical asks later to categorise the `fibre` variable, let's do it now.
+```{r}
+diet <- read_dta("dietlsh.dta") %>% mutate_if(is.labelled, as_factor)
+
+glimpse(diet)
+
+diet %<>% mutate(hieng = factor(hieng,
+                               levels = c(0, 1),
+                               labels = c("normal", "high-energy")),
+                 fibre_cat = cut_number(fibre, 3))
+summary(diet$fibre_cat)
+summary(diet$fibre)
+glimpse(diet)
+```
+
+-------------------------------------------------------------------------------
+
+
+## 1. Cox regression
+
+Set the timescale as time since entry, and analyse the effect of a high-energy diet on the CHD mortality with Cox regression.
+
+```{r}
+# Create survival object
+surv_diet <- Surv(diet$fup, diet$chd)
+summary(surv_diet)
+
+# Cox model
+cox_hieng <- coxph(surv_diet ~ hieng, data = diet)
+cox_hieng
+cox_hieng$coefficients %>% exp()
+confint(cox_hieng) %>% exp()
+```
+The longest follow-up period was 20 years.
+People following a high-energy diet half the rate of CHD than people not on that diet (HR 0.52, 0.29-0.95).
+
+-------------------------------------------------------------------------------
+
+
+## 2. Nelson-Aalen plot
+
+Cox regression carries an assumption that the rate ratio remains constant over time. We can check this visually with a Nelson-Aalen plot. Do you think the proportionality assumption is valid?
+
+N-A plots are built with function `ggsurvplot()` from package "survminer"; it uses ggplot to visualise survival objects made with `Surv()` and fitted to data with `survfit()`. Unlike Stata, the confidence interval bands are semi-transparent, which makes the graph much more readable.
+```{r}
+# Create Survfit object
+sf_diet <- survfit(surv_diet ~ hieng, data = diet)
+
+# Nelson-Aalen graph
+ggsurvplot(sf_diet,
+           data = diet,
+           fun = "cumhaz",
+           conf.int = T,
+           yscale = "log2",
+           title = "Nelson-Aalen plot", xlab = "Time since entry (years)")
+```
+On the logarithm scale, the lines seem to remain equidistant through time: the relative effects of diet seem proportional.
+
+-------------------------------------------------------------------------------
+
+
+## 3. Interaction test
+
+Let's now formally assess this with an interaction test.
+
+Let's first split the data in two: before and after the median follow-up period.
+*Issue*: I don't know how to calculate the median (equivalent of centile in Stata) for the Surv object.
+```{r}
+# Calculate median follow-up ???
+summary(surv_diet)
+plot(surv_diet)
+sf_diet
+
+# Split the dataset into two time-bands
+split_diet <- survSplit(surv_diet ~ ., diet, cut = c(6.8), episode = "timegroup")
+```
+
+We add the newly created timegroup variable in `strata()`, and we use `*` to indicate interaction with high-energy diet. In the output, R knows not to estimate an effect for time, so it doesn't, unlike Stata.
+
+
+We compare this model with another model without strata() with a LRT.
+
+NB: you need to fit a new basic model to the split dataset!
+```{r}
+# Model with interaction
+cox_hieng_inter <- coxph(surv_diet ~ hieng * strata(timegroup), data = split_diet) 
+cox_hieng_inter
+# Model without interaction
+cox_hieng_basic <- coxph(surv_diet ~ hieng, data = split_diet) 
+
+# Likelihood ratio test
+lrtest(cox_hieng_basic, cox_hieng_inter)
+```
+There is no evidence that the effect of diet is not proportional using time in the study (LRT p = 0.38).
+
+-------------------------------------------------------------------------------
+
+
+## 4. Nelson-Aalen plot with age timescale
+
+Now do the same analyses in Q1-2 but using age as the time scale. 
+
+
+```{r}
+# Create survival object with age as the time scale 
+surv_diet_age <- diet %$% Surv(time = as.numeric(doe) / 365.25,
+                               time2 = as.numeric(dox) / 365.25,
+                               event = chd,
+                               origin = as.numeric(dob) / 365.25)
+summary(surv_diet_age)
+```
+
+```{r}
+# Nelson-Aalen plot
+sf_diet_age <- survfit(surv_diet_age ~ hieng, data = diet)
+ggsurvplot(sf_diet_age,
+           data = diet,
+           fun = "cumhaz",
+           conf.int = T,
+           yscale = "log2",
+           title = "Nelson-Aalen plot", xlab = "Age (years)")
+```
+The lines are not equidistant, so the effect does not *appear* to be proportional; but the confidence intervals are very wide, because there are few observations particularly at the start (among younger people). So, a NA plot is not very helpful. 
+
+-------------------------------------------------------------------------------
+
+
+## 5. Interaction test on age timescale
+
+Now do the same analyses in Q3 but using age as the time scale. 
+
+```{r}
+# Split the age timeaxis into two, at 59.7
+split_diet_age <- survSplit(surv_diet_age ~ ., diet, cut = c(59.7), episode = "agegroup")
+
+# Cox with interaction for age
+cox_hieng_age_inter <- coxph(surv_diet_age ~ hieng * strata(agegroup), data = split_diet_age)
+cox_hieng_age_inter
+
+# Cox without interaction
+cox_hieng_age_basic <- coxph(surv_diet_age ~ hieng, data = split_diet_age) 
+
+# LRT
+lrtest(cox_hieng_age_inter, cox_hieng_age_basic)
+```
+There is no evidence against proportionality using age as timescale.
+
+-------------------------------------------------------------------------------
+
+
+## 6. Non-binary exposures
+
+Investigate the effect of dietary fibre (`fibre_cat`) on CHD mortality, first with follow-up time scale.
+
+```{r}
+# Create survfit object
+sf_diet_fibre <- survfit(surv_diet ~ fibre_cat, data = diet)
+
+# Nelson-Aalen plot
+ggsurvplot(sf_diet_fibre, data = diet, fun = "cumhaz", conf.int = T, yscale = "log2", title = "Nelson-Aalen plot", xlab = "Time of follow-up (years)")
+```
+
+The plot becomes very difficult to interpret, and the confidence intervals greatly overlap.
+
+```{r}
+# Fit a Cox model 
+cox_fibre <- coxph(surv_diet ~ fibre_cat, data = split_diet)
+cox_fibre
+
+# Cox with interaction
+cox_fibre_inter <- coxph(surv_diet ~ fibre_cat * strata(timegroup), data = split_diet) 
+cox_fibre_inter
+
+# LRT
+lrtest(cox_fibre, cox_fibre_inter)
+```
+
+Now let's do the same analyses (except NA plot) but using age time-scale.
+```{r}
+# Cox model
+cox_fibre_age <- coxph(surv_diet_age ~ fibre_cat, data = split_diet_age)
+cox_fibre_age
+
+# Cox model adjusting for age
+cox_fibre_age_inter <- coxph(surv_diet_age ~ fibre_cat * strata(agegroup), data = split_diet_age)
+cox_fibre_age_inter
+
+# LRT
+lrtest(cox_fibre_age, cox_fibre_age_inter)
+```
+
+-------------------------------------------------------------------------------
+
+
+# Primary Biliary Cirrhosis
+
+## 7. Cox with multiple covariates
+
+
+Read in pbc1bas.dta and set the analysis on a follow-up timescale.
+
+```{r}
+# Read in the pbc1bas.dta dataset 
+pbc <- read_dta("pbc1bas.dta")
+
+# Data management
+pbc %<>% mutate(death = d,
+               treat = factor(treat, levels = c(1, 2), labels = c("placebo", "azath")),
+               cenc0 = factor(cenc0, levels = c(0, 1), labels = c("no", "yes")),
+               cir0 = factor(cir0, levels = c(0, 1), labels = c("no", "yes")),
+               gh0 = factor(gh0, levels = c(0, 1), labels = c("no", "yes")),
+               asc0 = factor(asc0, levels = c(0, 1), labels = c("no", "yes"))) %>% 
+         select(-d)
+
+# Survival object
+surv_pbc <- Surv(pbc$time, pbc$death)
+```
+
+Firstly, examine the effect of treatment (`treat`), then add bilirubin (`logb0`) and cirrhosis (`cir0`) to the model, one by one.
+```{r}
+# Univariate
+coxph(surv_pbc ~ treat, data = pbc)
+
+# Adding bilirubin
+coxph(surv_pbc ~ treat + logb0, data = pbc)
+
+# Fully adjusted model
+coxph(surv_pbc ~ treat + logb0 + cir0, data = pbc)
+```
+
+-------------------------------------------------------------------------------
+
+
+## Bonus: Martingale residuals
+
+There is a quicker way of testing the assumption of proportional hazards: ormal testing of Martingale residuals, with function `cox.zph()`.
+```{r}
+# Test 
+pr_haz <- cox.zph(cox_hieng)
+pr_haz
+
+# Plot curves
+plot(pr_haz)
+```
+
+
+
