@@ -214,9 +214,11 @@ No evidence of interaction between MF and sex.
 ## 7. Poisson and linearity
 
 Assess for a linear relationship with age by treating it as numerical (as opposed to categorical) in a simple Poisson model.
-You just need to use `as.integer()` with variable age. Unfortunately `idr.display()` breaks with quantiative exposures, so you need to extract the RR manually.
+You just need to use `as.integer()` with variable age. Unfortunately doing this within the same code flow as `idr.display()` breaks it, so you have two options:
+1. extract the RR and 95% CI manually
+2. use as.integer() outside the glm() function
 ```{r}
-# Age as numerical
+# Age as numerical (option 1)
 age_linear <- glm(disc2 ~ as.integer(age) + offset(log(pyrs)),
                      family = "poisson",
                      data = ond)
@@ -224,6 +226,10 @@ age_linear <- glm(disc2 ~ as.integer(age) + offset(log(pyrs)),
 # Get HRs by exponentiating the log(HR)s
 age_linear$coefficients %>% exp()
 confint(age_linear) %>% exp()
+
+# Option 2
+# ond$age_int <- as.integer(ond$age)
+# glm(disc2 ~ age_int + offset(log(pyrs)), family = "poisson", data = ond) %>% idr.display()
 
 # Age as categorical
 age_catego <- glm(disc2 ~ age + offset(log(pyrs)),
