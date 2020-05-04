@@ -11,7 +11,7 @@ output: html_notebook
 * Examine the proportionality assumption in Cox models
  - graphically, with Nelson-Aalen plots
  - with a test for interaction
- - with a test for Martingale residuals
+ - with a test for residuals
 * Cox regression with multiple covariates
 
 
@@ -122,7 +122,7 @@ Let's first split the data in two: before and after the median follow-up period.
 ```{r}
 # Calculate median follow-up ???
 summary(surv_diet)
-plot(surv_diet)
+#plot(surv_diet)
 sf_diet
 
 # Split the dataset into two time-bands
@@ -285,16 +285,25 @@ coxph(surv_pbc ~ treat + logb0 + cir0, data = pbc)
 -------------------------------------------------------------------------------
 
 
-## Bonus: Martingale residuals
+## Bonus 1: Forest plots
 
-There is a quicker way of testing the assumption of proportional hazards: ormal testing of Martingale residuals, with function `cox.zph()`.
+Package survminer has a great function to visually represent the rate ratios in a Cox model via a Forest plot: `ggforest()`. It takes as argument a Cox model. (Alternatively, you can use `sjPlot::plot_model()`)
+```{r}
+ggforest(cox_fibre_age, data = diet)
+# sjPlot::plot_model(cox_fibre_age)
+```
+
+
+## Bonus 2: test of proportional hazards with residuals
+
+There is a quicker way of testing the assumption of proportional hazards: testing of residuals, with function `cox.zph()`.
 ```{r}
 # Test 
 pr_haz <- cox.zph(cox_hieng)
 pr_haz
 
 # Plot curves
-plot(pr_haz)
+ggcoxzph(pr_haz)
 ```
 
 

@@ -154,11 +154,27 @@ glm(disc2 ~ mfpermg + sex + offset(log(pyrs)),
     data = ond) %>% idr.display()
 
 # Adjusting for both age and sex
-glm(disc2 ~ mfpermg + age + sex + offset(log(pyrs)),
+pois_full <- glm(disc2 ~ mfpermg + age + sex + offset(log(pyrs)),
     family = "poisson",
-    data = ond) %>% idr.display()
+    data = ond)
+idr.display(pois_full)
 ```
 The age-adjusted rate ratios for microfilarial loads are reduced: it is possible that age is a confounder. The RRs remain almost the same after adjusting for sex.
+
+-------------------------------------------------------------------------------
+
+
+## Bonus: Forest plot
+
+Package sjPlot has a great function that creates a Forest plot of results from a regression model quite easily! `plot_model()`, that takes as its main argument a regression model. Very customisable, for more info look at [this vignette](https://cran.r-project.org/web/packages/sjPlot/vignettes/plot_model_estimates.html).
+```{r}
+sjPlot::plot_model(pois_full,
+                   group.terms = c(1, 1, 2, 2, 2, 3),
+                   show.values = T, value.offset = 0.35,
+                   show.p = F,
+                   title = "Multivariate Poisson regression")
+```
+
 
 -------------------------------------------------------------------------------
 

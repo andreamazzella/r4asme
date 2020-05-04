@@ -14,6 +14,11 @@ output: html_notebook
 * Stratify rates
  - by a categorical variable
  - by a time variable (by doing a Lexis expansion)
+ 
+
+## Acknowledgements
+
+Thank you Prof Ruth Keogh @LSHTM, for pointing me at the right direction with regards to `survSplit()` and `pyears()`.
 
 -------------------------------------------------------------------------------
 
@@ -24,7 +29,6 @@ output: html_notebook
 library("haven")
 library("magrittr")
 library("survival")
-library("epiR")
 library("tidyverse")
 
 # Limit significant digits to 3, remove scientific notation
@@ -184,32 +188,44 @@ pyears(surv_white_age ~ ageband,
 
 ## 9. Further stratification
 
-You can stratify by another categorical variable by adding it after a + in the right hand-side of the formula in `pyears()`. You then change the options in `summary()` to hide events and person-time. There are options to calculate RR insead of showing the risks, but I can't get them to work.
+You can stratify by another categorical variable by adding it after a + in the right hand-side of the formula in `pyears()`. You then change the options in `summary()` to hide events and person-time. There are options to calculate RR instead of showing the risks, but I can't get them to work.
 
 
 ```{r}
+# Calculate rates stratified by age and grade
 rates_age_grade <- pyears(surv_white_age ~ ageband + grade,
                           data = white_split,
                           scale = 1)
 
 summary(rates_age_grade, n = F, event = F, pyears = F, rate = T, scale = 1000)
 
-# broken code
-# summary(py, n = F, event = F, pyears = F, rr = T, ci.rr = T, scale = 1000)
-?survival::summary.pyears
+# does not work
+# summary(rates_age_grade, rr = T, ci.rr = T, n = F, event = F, pyears = F)
+
+# Calculate rate ratios manually
+tribble(
+  ~age_band, ~RR,
+  "2", 2.13 / 0,
+  "3", 3.86 / 1.64,
+  "4", 3.95 / 2.53,
+  "5", 10.17 / 4.67,
+  "6", 13.36 / 7.24,
+  "7", 8.70 / 14.21,
+  "8", 12.72 / 20.44,
+  "9", 39.35 / 23.70
+  )
 ```
 
+*Issue* I also don't know how to calculate an overall MH rate ratio, MH χ², and test for interaction [stuff that Stata's `stmh` does as part of the same command]
 
-*ISSUE*
-I don't know how to use this to calculate an overall MH rate ratio, MH χ², and test for interaction [stuff that Stata's `stmh` does as part of the same command]
+`epiR::epi.2by2()` apparently can calculate MH rate ratios by setting the option "method" to "cohort.time". The downside: it requires a very specific input, a 3-way table containing cases and person-years stratified by ageband and the other categorical variable, and I'm not sure how to convert the output from `pyears()` into this very specific format without doing it manually.
 
-`epiR::epi.2by2()` apparently can calculate MH rate ratios by setting the option "method" to "cohort.time". The downside: it requires a very specific input, a 3-way table containing cases and person-years stratified by ageband and the other categorical variable, and I'm not sure how to convert the output from `pyears()` into this very specific format.
-```{r}
-pyears(surv_white_age ~ grade + ageband,
-       data = white_split,
-       scale = 1) %>%
-  summary(n = F)
+```{r does not work}
+#test <- summary(py_grade_age, n = F)
+#epiR::epi.2by2(test)
 ```
+
+*Workaround*: use regression methods instead
 
 -------------------------------------------------------------------------------
 
@@ -278,7 +294,7 @@ pyears(surv_white_age2 ~ smok3 + grade,
 ## 11. Statifying on three variables
 
 Examine the effect of job grade on cardiac mortality, adjusting for both age and smoking at the same time. What can you conclude?
-*ERROR* code breaks
+*ERROR* code breaks, not sure why
 ```{r}
 # Stratified rates
 # pyears(surv_white_age2 ~ ageband + grade + smok3,
@@ -292,12 +308,9 @@ Examine the effect of job grade on cardiac mortality, adjusting for both age and
 
 ## 12. Standardised mortality rate
 
-
+Not sure how to do this
 ```{r}
 
 ```
 
 -------------------------------------------------------------------------------
-
-## Acknowledgements
-Thank you Prof Ruth Keogh @LSHTM, for pointing me at the right direction with regards to `survSplit()` and `pyears()`.
