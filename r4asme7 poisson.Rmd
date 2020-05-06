@@ -98,7 +98,7 @@ We can see that the incidence increases dramatically with age, it's about the sa
 ## 3. Poisson regression
 
 Now perform the same three analyses but with Poisson regression.
-Poisson regression in R uses the `glm()` formula – but it also needs to include `offset(log(<pyears>))` as a covariate. Clever statisticians, can you please explain what this means mathematically?
+Poisson regression in R uses the `glm()` formula – but it also needs to include `offset(log(<pyears>))` as a covariate. This is for mathematical reasons.
 
 epiDisplay has a function to simplify the Poisson regression input: `idr.display()`.
 
