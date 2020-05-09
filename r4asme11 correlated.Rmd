@@ -1,0 +1,611 @@
+---
+title: "11: Analysis of correlated data"
+subtitle: "R 4 ASME"
+authors: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+output: html_notebook
+---
+
+-------------------------------------------------------------------------------
+
+*Warning:* This is a draft with many issues.
+
+-------------------------------------------------------------------------------
+
+## What you will learn
+* ...
+ - ...
+
+
+-------------------------------------------------------------------------------
+
+## 0. Packages and options
+
+```{r message=FALSE, warning=FALSE}
+# Load packages
+library("haven")
+library("magrittr")
+library("summarytools")
+library("survival")
+library("miceadds")
+library("lme4")
+library("gee")
+library("epiDisplay")
+library("tidyverse")
+
+# Limit significant digits to 3, remove scientific notation
+options(digits = 3, scipen = 9)
+```
+
+-------------------------------------------------------------------------------
+
+
+# Part 1: Poisson
+
+These data are from a pneumococcal vaccine trial performed in Papua New Guinea, assessing the vaccine efficacy in preventing clinical episodes of pneumonia among children.
+
+Each child might have more than one record, because each record represents an episode of pneumonia (or the last period of follow-up, without pneumonia). (This means that the dataset was produced with Stata's `stset` command).
+
+```{r}
+papua <- read_dta("pngnew.dta")
+glimpse(papua)
+```
+
+Variables that we will use:
+
+**Outcome*: `any` (episode of clinical pneumonia during this period)
+**Exposure*: `vacc` (vaccination: 1 = placebo, 2 = vaccine)
+**Cluster*: `id` (child)
+**Time*:
+ -`timein` (date of entry in this follow-up period)
+ -`timeout` (date of exit from this follow-up period)
+ -`dob` (date of birth)
+**Other*
+- `sex` (1 = male, 2 = female)
+- `anyprev` (0: no previous episodes of pneumonia, 1: any prev. episodes)
+
+Label values. The Stata practical will ask you to calculate person-years; let's do it now.
+```{r data_management}
+papua %<>% mutate(sex = factor(sex, levels = c(1, 2), labels = c("male", "female")),
+                 vacc = factor(vacc, levels = c(1, 2), labels = c("placebo", "vaccine")),
+                 pyrs = as.numeric(timeout - timein) / 365.25) %>% 
+           select(-"datevac")
+
+summary(papua)
+```
+
+## 1. Explore the data format
+
+Identify all records for child with ID 2921 and make sure you understand what each row represents.
+```{r}
+papua %>% filter(id == 2921)
+```
+
+
+## 2. Explore the numbers
+
+```{r}
+pap_summ <- papua %>% group_by(id) %>% summarise(episodes = sum(any),
+                                                 vacc = max(as.numeric(vacc)))
+
+pap_summ %$% ctable(episodes, vacc, headings = F, prop = "no")
+```
+A total of 1390 children, 671 of whom are vaccinated. 467 of them did not have any episodes of pneumonia. Two children had 11 episodes of pneumonia, and they were both unvaccinated.
+
+
+Count the total number of episodes in each intervention arm.
+```{r}
+papua %>% group_by(vacc) %>% summarise(episodes = sum(any))
+```
+
+
+## 3. Prepare for cohort analysis
+
+Create a survival object to do person-time calculations. Unlike `stset`, `Surv()` doesn't seem to require any special option to include repeated observations.
+
+```{r}
+#surv_papua <- papua %$% Surv(time = as.numeric(timein) / 365.25,
+ #                            time2 = as.numeric(timeout) / 365.25,
+  #                           event = any)
+
+surv_papua <- papua %$% Surv(time = pyrs, event = any)
+
+summary(surv_papua)
+```
+
+
+## 4. Invalid: Incidence rates and HR
+
+Calculate incidence rates in the vaccine and placebo arms, and calculate a rate ratio (without accounting for within-child clustering).
+
+```{r}
+pyears(surv_papua ~ vacc, data = papua, scale = 1) %>%
+  summary(n = F, rate = T, ci.r = T, scale = 100)
+
+print("Rate ratio")
+89.5/99.0
+```
+*Issue* I don't know how to calculate the HR automatically, or how to get a 95% CI, or a p-value.
+
+From this (incorrect) analysis, the vaccine has a (mild) effect. (NB: from `stmh`: p = 0.02)
+
+
+## 5a. Invalid: Poisson ignoring clustering
+
+Let's demonstrate that ordinary Poisson regression, ignoring clustering, is also invalid.
+
+Fit an ordinary Poisson regression model for the effect of vaccination.
+
+
+
+```{r}
+# Poisson model
+pois_inv <- glm(any ~ vacc + offset(log(pyrs)),
+                family = "poisson",
+                data = papua)
+# HR and 95% CI
+idr.display(pois_inv)
+
+# log(SE)
+summary(pois_inv)
+```
+HR 0.9 (0.83, 0.98), Wald's p = 0.02
+HR is the same as the one calculated with `pyears()`.
+SE of log(HR) = 0.04235
+
+
+## 5b. Poisson with robust standard errors
+
+Now fit again the Poisson model, but take clustering into account by computing robust standard errors. How does this change the estimations of the vaccine efficacy?
+
+We can use function `glm.cluster()` from package {miceadds}. It's similar to `glm()`, and it includes a cluster option (careful – variable needs to be put in quotes)
+```{r}
+pois_rob <- glm.cluster(papua,
+                        any ~ vacc + offset(log(pyrs)),
+                        cluster = "id",
+                        family = "poisson")
+
+# HR
+coef(pois_rob) %>% exp()
+
+# 95% CI
+confint(pois_rob) %>% exp()
+
+# SE of log(HR)
+summary(pois_rob)
+```
+HR 0.90: same as above
+95% CI: 0.80-1.02 (wider)
+SE of log(HR): 0.061
+p = 0.10: only weak evidence for an association now.
+
+
+
+## 6. Poisson with random effects
+
+Now use a random effects model to account for within-child clustering.
+
+*-----*
+*ISSUE* 
+*-----*
+I don't really know how to use `lme4::glmer()`.
+
+```{r}
+
+?glmer
+
+pois_re <- glmer(any ~ vacc + offset(log(pyrs)) + (1|id),
+                 data = papua,
+                 family = "poisson")
+
+summary(pois_re)
+
+# HR
+#coef(pois_re) %>% exp()
+
+# 95% CI
+#confint(pois_re) %>% exp()
+
+# SE of log(HR)
+
+
+```
+
+
+>Stata command and output:
+```{stata}
+streg i.vacc, dist(exp) frailty(gamma) shared(id)
+```
+HR: 0.88
+SE: 0.056
+Output also contains /lntheta and theta. (theta:rho = Poisson:binomial)
+LRT on theta 0: p < 0.001 - there is very strong evidence of clustering
+
+
+## 7. Another way of doing Poisson with random effects?
+
+In Stata, this is `xtpoisson` instead of `streg, shared(cluster)`. `xtpoisson` estimates a parameter α, whilst `streg` estimates a parameter θ.
+
+>Stata
+```{stata}
+xtpoisson any i.vacc, re e(pyears) i(id) irr base
+```
+(irr = incidence HR)
+What is the estimated vaccine efficacy? What is an appropriate 95% confidence interval
+for this estimate?
+VE = 1-RR{v/u} /100 = 1-0.885 /100 = 11.5%
+95% CI: 0-22%
+p = 0.06
+
+
+## 8. Age time-scale
+
+Now set the time-scale as "age", and refit the Poisson model with random effects.
+
+```{r}
+surv_papua_age <- papua %$% Surv(time = as.numeric(timein) / 365.25,
+                                 time2 = as.numeric(timeout) / 365.25,
+                                 event = any,
+                                 origin = as.numeric(dob) / 365.25)
+
+
+```
+
+*-----*
+*ISSUE* 
+*-----*
+Again, I don't know how to use `glmer()`.
+
+>Stata
+```{stata}
+streg i.vacc, dist(exp) frailty(gamma) shared(id) forceshared
+```
+
+
+## 9. Random effects Poisson model with covariates
+
+Using the survival object with follow-up timescale, fit a random effects model to assess vaccine efficacy controlling for age at the start of each period, and sex.
+
+Let's first calculate age at start, and divide it into categories.
+
+```{r}
+# Calculate age at start
+papua %<>% mutate(age_start = as.numeric(timein - dob)/365.25)
+
+# Summarise age at start
+summary(papua$age_start)
+ggplot(papua, aes(age_start)) + geom_histogram()
+```
+The age at start range from 0.21 to 7.44 years. In the Stata practical, they decide to categorise this in 1-year groups, except the children aged 4 years or more, who are grouped togther.
+
+```{r}
+# Categorise age at start
+papua %<>% mutate(agegrp = cut(age_start,
+                              breaks = c(0, 1, 2, 3, 4,+Inf),
+                              labels = c("0-1yr,", "1-2yr", "2-3yr", "3-4yr", ">=4yr")))
+
+# Check it worked
+papua %>% group_by(agegrp) %>% summarise(count = n(),
+                                         min_age = min(age_start),
+                                         max_age = max(age_start))
+
+```
+
+We can now fit the RE model with sex and age as categorical covariates.
+
+Does this change the estimates? If so, why?
+
+*-----*
+*ISSUE* 
+*-----*
+Again, I don't know how to use `glmer()`.
+
+```{r}
+
+```
+
+> Stata code and output:
+```{stata}
+streg i.vacc i.agegrp i.sex, dist(exp) frailty(gamma) shared(id) base
+```
+    adjusted    unadj
+HR  0.91        0.88
+p   0.10        ?
+
+Controlling for these baseline factors hasn't changed much the estimates – which makes sense, because this is a randomised trial. You can however still check for baseline differences if you want:
+```{r}
+papua %>% filter(anyprev == 0) %$% ctable(sex, vacc, prop = "c")
+papua %>% filter(anyprev == 1) %$% ctable(agegrp, vacc, prop = "c")
+```
+
+-------------------------------------------------------------------------------
+
+
+# Part 2: Logistic
+
+These data are from a study on household contacts of tubercolosis cases. We will assess the effect of duration of cough in the index case on the odds of positive Mantoux test in the contacts. Since there is no time element, we will use logistic regression.
+
+## 10. Import and explore data
+
+```{r}
+tb <- read_dta("hhtb.dta") %>% mutate_if(is.labelled, as_factor)
+glimpse(tb)
+```
+
+Variables that we will use:
+
+**Outcome*: `mantoux` (tuberculin test result: 0 = negative, 1 = positive)
+**Exposure*: `cough` (duration of cough in index case: 1 = <2 months, 2 = >=2 months)
+**Cluster*: `id` (household, so = index case)
+**Other*
+- `hiv` (HIV status of index case: 1 = negative, 2 = positive)
+- `agegrp` (age of contact, in years)
+
+There are value labels in Stata, I'm not sure why haven can't import them. Let's add them, and remove variables we don't need. I'll add an "ix" to variables that relate to the index case because I get confused otherwise.
+
+```{r}
+tb %<>% mutate(mantoux = factor(mantoux, levels = c(0, 1), labels = c("neg", "pos")),
+              ix_cough = factor(cough, levels = c(1, 2), labels = c("<2mo", ">=2mo")),
+              ix_hiv = factor(hiv, levels = c(1, 2), labels = c("neg", "pos"))) %>% 
+  select(-c("smear1", "crowding", "intimacy", "tbsite", "cavit", "cough", "hiv"))
+
+summary(tb)
+```
+
+## 11. Explore clusters by HIV status of index case
+
+Explore the distribution of clusters stratified by HIV status of the index case.
+
+*-----*
+*ISSUE* 
+*-----*
+Can't manage to use `group_by() %>% summarise()` to get the same results as that collapse function.
+
+```{r}
+freq(tb$id)
+# Number of rows for each "id" (contacts in each household) is between 0 and 13.
+
+tb %>% group_by(id) %>% summarise(count(ix_hiv))
+
+test <- tb %>% group_by(id)
+
+test
+
+test %$% freq(mantoux)
+```
+
+
+>
+11. Each record represents an individual household contact of a TB case. The variable id
+indicates which household contacts belong to the same household (and hence are contacts
+of the same index case). Use the following commands to examine the distribution of
+contacts per household by HIV status of the index case:
+```{stata}
+preserve
+collapse (count) contacts=mantoux (mean) hiv, by(id)
+tab contacts hiv
+restore
+```
+   (count) |      (mean) hiv
+   mantoux |         1          2 |     Total
+-----------+----------------------+----------
+         1 |         3          5 |         8 
+         2 |         5          4 |         9 
+         3 |         3         10 |        13 
+         4 |         6          7 |        13 
+         5 |         2          5 |         7 
+         6 |         4          5 |         9 
+         8 |         2          3 |         5 
+         9 |         1          2 |         3 
+        10 |         1          0 |         1 
+        11 |         1          0 |         1 
+        13 |         0          1 |         1 
+-----------+----------------------+----------
+     Total |        28         42 |        70 
+
+	 
+	 
+>
+12. Perform a similar analysis to examine the distribution of contacts per household by
+duration of cough of the index case. Why are only 58 households shown?
+```{stata}
+preserve
+collapse (count) contacts=mantoux (mean) cough, by(id)
+tab contacts cough
+restore
+```
+26 index cases had a cough (>2mos), 32 had a shorter duration (in 12 duration was not recorded).
+
+
+## 13. Invalid: crude analysis ignoring clustering
+
+Examine the distribution of positive Mantoux among contacts by the duration of cough in the index case, ignoring any clustering.
+
+What's the OR and 95% CI? χ² p-value? What would you conclude?
+
+```{r}
+tb %$% ctable(mantoux, ix_cough, prop = "c", OR = T, chisq = T)
+```
+Igrosing clustering, 67% of positive people had an index case who had a cough for more than 2 months.
+OR 1.78 (1.06-3.01), p = 0.04
+
+
+## 14. Logistic regression with robust standard errors
+
+Fit a logistic regression model that accounts for clustering by calculating robust standard errors.
+
+What conclusions do you derive? Compare this with the above output.
+
+```{r}
+# Fit the model
+logit_rob <- glm.cluster(tb,
+                         mantoux ~ ix_cough,
+                         cluster = "id",
+                         family = "binomial")
+# HR
+coef(logit_rob) %>% exp()
+
+# 95% CI
+confint(logit_rob) %>% exp()
+
+# SE of log(HR)
+summary(logit_rob)
+```
+
+
+```{stata}
+logit mantoux i.cough, base or vce(cluster id)
+```
+OR 1.78 (0.90-3.52), p = 0.10: OR is the same, but CI is wider, and there is less evidence of an association.
+
+
+## 15. Logistic regression with GEE
+
+Now fit the same logistic model but with Generalised Estimating Equations approach, with robust standard errors and an exchangeable correlation matrix.
+
+Compare the results with the ones above.
+
+This *should* be doable with function `gee()` from the package with the same name. The correlation matrix type goes into the "corstr" option.
+
+*-----*
+*ISSUE* 
+*-----*
+There's an error and I have no idea why.
+
+```{r}
+?gee
+
+logit_gee <- gee(mantoux ~ ix_cough,
+                 id = id,
+                 family = binomial,
+                 data = tb,
+                 corstr = "exchangeable")
+
+summary(logit_gee)
+```
+
+>Stata command and output
+```{stata}
+xtlogit mantoux i.cough, pa corr(exch) i(id) vce(robust) or
+```
+OR 1.88 (0.94-3.73), Wald p = 0.07
+
+
+
+## 16. Logistic regression with RE
+
+Now do the same but with a random effects model, and do a LRT of rho = 0.
+
+Is there evidence of variation between households?
+*-----*
+*ISSUE* 
+*-----*
+Again, `glmer()`...
+
+>Stata command and output
+```{stata}
+xtlogit mantoux i.cough, re i(id) base or
+```
+OR 2.19 (0.94-5.08), p = 0.07, rho = 0.25
+LRT of rho=0: p = 0.001
+
+Now check the reliability of these estimates with a quadrature check.
+
+*-----*
+*ISSUE* 
+*-----*
+I mean...
+
+>stata command and output
+```{stata}
+quadchk, nooutput
+```
+                         Quadrature check
+               Fitted       Comparison     Comparison
+             quadrature     quadrature     quadrature
+             12 points      8 points       16 points
+-----------------------------------------------------
+Log          -164.52892     -164.52894     -164.52892
+likelihood                  -.00002205      3.680e-07   Difference
+                             1.340e-07     -2.237e-09   Relative difference
+-----------------------------------------------------
+mantoux:      .78267652      .78265355      .78267614
+ 2.cough                    -.00002297     -3.796e-07   Difference
+                            -.00002935     -4.850e-07   Relative difference
+-----------------------------------------------------
+mantoux:      .08952303      .08952582      .08952296
+   _cons                     2.781e-06     -7.888e-08   Difference
+                             .00003106     -8.812e-07   Relative difference
+-----------------------------------------------------
+/:            .07423657      .07420017       .0742359
+ lnsig2u                    -.00003639     -6.734e-07   Difference
+                            -.00049025     -9.071e-06   Relative difference
+-----------------------------------------------------
+All the relative differences are less than 0.01, suggesting that the estimates from the RE model are reasonably reliable.
+
+
+## 17. Logistic regression, RE, with covariates
+
+Fit a random effects logistic model to estimate the odds of positive Mantoux according to cough in the index case, controlling for:
+* HIV status of the index case
+* age of the household contact
+* household clustering
+
+How would you summarise and interpret your results?
+
+*-----*
+*ISSUE* 
+*-----*
+Again, `glmer()`...
+
+>
+```{stata}
+xtlogit mantoux i.cough i.hiv i.agegrp, re i(id) base or
+quadchk, nooutput
+```
+After adjusting for HIV, age group, and clustering, the odds of positive Mantoux in people with a cough are 1.85 times higher than in people with shorter cough. (OR 1.85, 0.79-4.31). There is very good evidence for this association (p = 0.0003).
+
+
+## 18. Logistic regression, GEE, with covariates
+
+Do the same as Q17 but with GEE, and compare the results.
+
+*-----*
+*ISSUE* 
+*-----*
+Same error as Q15.
+
+```{r}
+logit_gee_covar <- gee(mantoux ~ ix_cough + ix_hiv + agegrp,
+                 id = id,
+                 family = binomial,
+                 data = tb,
+                 corstr = "exchangeable")
+
+summary(logit_gee_covar)
+```
+
+>
+```{stata}
+xtlogit mantoux i.cough i.hiv i.agegrp, pa corr(exch) i(id) vce(robust) or base
+```
+OR 1.64 (0.81, 3.32)
+
+
+As GEEs are not based on likelihood, we can't use LRTs. Instad, we can use Wald tests of simple and composite linear hypotheses.
+
+What hypotheses are being tested? What do you conclude?
+
+*-----*
+*ISSUE* 
+*-----*
+This is done with `testparm` in Stata, I don't know the R equivalent.
+
+>
+```{stata}
+testparm 2.agegrp 3.agegrp
+```
+Test linear hypotheses after estimation
+H0: after taking account of... there is no association between age and outcome. 
+p >chi2: <0.001
+
+-------------------------------------------------------------------------------
