@@ -7,20 +7,21 @@ output: html_notebook
 
 -------------------------------------------------------------------------------
 
-*Warning:* This is a draft with many issues.
+*Warning:* This is a draft with major issues.
 
 -------------------------------------------------------------------------------
 
-## What you will learn
-* ...
- - ...
-
+## Contents
+* Analysis of correlated data
+ - robust standard errors
+ - GEE (*broken*)
+ - RE models (*broken*)
 
 -------------------------------------------------------------------------------
 
 ## 0. Packages and options
 
-```{r message=FALSE, warning=FALSE}
+```{r}
 # Load packages
 library("haven")
 library("magrittr")
@@ -135,8 +136,6 @@ Let's demonstrate that ordinary Poisson regression, ignoring clustering, is also
 
 Fit an ordinary Poisson regression model for the effect of vaccination.
 
-
-
 ```{r}
 # Poisson model
 pois_inv <- glm(any ~ vacc + offset(log(pyrs)),
@@ -177,7 +176,6 @@ HR 0.90: same as above
 95% CI: 0.80-1.02 (wider)
 SE of log(HR): 0.061
 p = 0.10: only weak evidence for an association now.
-
 
 
 ## 6. Poisson with random effects
@@ -246,8 +244,6 @@ surv_papua_age <- papua %$% Surv(time = as.numeric(timein) / 365.25,
                                  time2 = as.numeric(timeout) / 365.25,
                                  event = any,
                                  origin = as.numeric(dob) / 365.25)
-
-
 ```
 
 *-----*
@@ -353,24 +349,37 @@ summary(tb)
 
 ## 11. Explore clusters by HIV status of index case
 
-Explore the distribution of clusters stratified by HIV status of the index case.
+Summarise the dataset by household to explore the distribution of contacts stratified by HIV status of the index case.
+
+id > hiv > mantoux
 
 *-----*
-*ISSUE* 
+*ISSUE* Can't manage to use `group_by() %>% summarise()` to get the same results as that collapse function.
 *-----*
-Can't manage to use `group_by() %>% summarise()` to get the same results as that collapse function.
+
+>
+collapse (count) contacts=mantoux (mean) hiv, by(id)
+tab contacts hiv
+(see output below)
 
 ```{r}
 freq(tb$id)
 # Number of rows for each "id" (contacts in each household) is between 0 and 13.
 
-tb %>% group_by(id) %>% summarise(count(ix_hiv))
+#tb_summ <- tb %>% mutate(contacts = 1) %>% 
+ # group_by(id, mantoux) %>%
+  #summarise(contacts = sum(contacts),
+#            hiv = sum(as.numeric(ix_hiv)))
 
-test <- tb %>% group_by(id)
+#tb_summ %$% ctable(hiv, contacts, prop = "n")
 
-test
 
-test %$% freq(mantoux)
+
+
+#tb %>% group_by(id) %>%
+ # summarise(contacts = n_distinct(mantoux))
+
+#ctable(contacts, hiv)
 ```
 
 

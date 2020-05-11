@@ -1,0 +1,471 @@
+---
+title: "12: Cluster-randomised trials"
+subtitle: "R 4 ASME"
+authors: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+output: html_notebook
+---
+
+-------------------------------------------------------------------------------
+
+*Warning:* This is a draft with some issues.
+
+-------------------------------------------------------------------------------
+
+## Content
+* CRT sample size calculation
+ - difference in rates
+
+* Cluster-level analysis
+ - t-test
+ - Wilcoxon rank-sum test
+ 
+* Individual-level analysis (*broken*)
+ - RE
+ - GEE
+ 
+* Analysis of pair-matched studies
+ - pairwise t-test
+ - Adjusted measures of effect with two-stage procedure
+
+-------------------------------------------------------------------------------
+
+## 0. Packages and options
+```{r}
+# install.packages("clusterPower")
+```
+
+```{r}
+# Load packages
+library("clusterPower")
+library("haven")
+library("magrittr")
+library("summarytools")
+#library("survival")
+#library("miceadds")
+#library("lme4")
+#library("gee")
+#library("epiDisplay")
+library("tidyverse")
+
+# Limit significant digits to 3, remove scientific notation
+options(digits = 3, scipen = 9)
+```
+
+-------------------------------------------------------------------------------
+
+# Part 1. Sample size calculation
+
+You are designing an unmatched cluster-randomised trial on a new vaccine's efficacy. Administrative areas will be randomly allocated to either the placebo arm or the vaccine arm; children will be followed up for 2 years. Outcome is mortality.
+
+* current mortality rate: 35 per 1000 child-years (variation: 25-45 per 1000)
+* you want to detect a 20% reduction in the mortality rate with 80% power
+* each year, 100 children enter the study's age-frame
+* trial duration: 3 years
+
+How many villages to you need?
+
+Package "clusterPower" has functions to calculate sample size in CRTs. There are three functions according to whether your outcome is continuous, a proportion, or a rate. `crtpwr.2rate()` is what we need here. The output, `m`, is the number of clusters per arm. 
+
+```{r}
+crtpwr.2rate(
+  alpha = 0.05,
+  power = 0.8,
+  m = NA,
+  py = 100 * 3 * 2,
+  r1 = 0.035,
+  r2 = 0.035 * 0.8,
+  cvb = 0.14
+)
+? crtpwr.2rate
+```
+Note that you can also use this to back-calculate other variables if you have a set number of clusters, for example by setting `power` as `NA` and `m` as 20.
+
+
+-------------------------------------------------------------------------------
+
+
+# Part 2. Bednets and malaria prevalence, The Gambia
+
+These data are from a cross-sectional study performed at the end of a cluster-randomised trial, in a sample of clusters in the treatment arm.
+
+The clusters are villages in The Gambia. The intervention consisted  insecticide-impregnated bednest, vs nothing. The outcome is malaria status in children.
+
+There are two datasets, which present the same data in different ways:
+* gamindiv.dta: each row is a child
+* gamvill.dta: each row is a village
+
+```{r}
+ind <- read_dta("gamindiv.dta")
+vil <- read_dta("gamvill.dta")
+glimpse(ind)
+glimpse(vil)
+```
+
+Variables that we will use:
+
+**Outcome*:
+ - in individual dataset: `para` (malaria status: 1 = positive, 2 = negative)
+ - in summary dayaset: `parapos` (number of children positive), `paraneg` (number of children negative), `rate` (village parasite prevalence: parapos/(parapos+paraneg))
+**Exposure*: `group` (treatment arm: 1 = bednets, 2 = control)
+**Cluster*: `vid` (village)
+
+Label values. I'll rename `rate` as `prevalence` because I find it confusing to refer to prevalence as a rate.
+```{r}
+ind %<>% mutate(para = factor(para,
+                             levels = c(1, 2),
+                             labels = c("positive", "negative")),
+               group = factor(group,
+                              levels = c(1, 2),
+                              labels = c("bednets", "control")),
+               vid = factor(vid)) %>% 
+         select(-c("vill", "area", "narea"))
+
+vil %<>% mutate(group = factor(group,
+                              levels = c(1, 2),
+                              labels = c("bednets", "control")),
+               vid = factor(vid),
+               prevalence = rate) %>% 
+         select(-c("nets", "eg", "dist", "area", "rate"))
+
+summary(ind)
+summary(vil)
+```
+
+
+## 2a. Prevalence by treatment arm (visual)
+
+Using the summary dataset, explore the village distribution of malaria prevalence  at the end of the CRT by treatment arm with twin histograms. Do the distributions look different?
+
+(I personally feel a Box plot is better to compare distributions of a continous variable according to a categorical variable).
+
+```{r}
+ggplot(vil, aes(prevalence, fill = group)) +
+  geom_histogram(bins = 9) +
+  facet_grid(group ~ .) +
+  theme(legend.position = "none")
+
+ggplot(vil, aes(x = prevalence, y = group)) +
+  geom_violin()
+```
+There appears to be lower malaria prevalence in the intervention arm.
+
+
+## 2b. (summarising)
+
+Now calculate mean prevalence in both arms:
+
+* first by using the individual dataset, dividing the number of positive children by the total number of children;
+* then with the village dataset, by averaging the prevalence in each village.
+```{r}
+# Individual dataset
+ind %$% ctable(group, para, prop = "r")
+
+# Village dataset
+vil %>% group_by(group) %>% summarise(mean(prevalence))
+0.277/0.392
+```
+We get different prevalences and prevalence ratios if we use the village or the individual dataset. (PR 0.71 vs 0.81).
+
+
+## 2c. Invalid: χ² test, ignoring clustering
+
+Now test the hypothesis that the intervention is associated with a reduction in malaria prevalence by using a χ² test. Ignore the clustering for now.
+Use the invididual dataset.
+```{r}
+ind %$% ctable(group, para, prop = "r", chisq = T)
+```
+χ² p-value is 0.01.
+
+
+## 2d. Valid: t-test and Wilcoxon rank-sum test
+
+Test the same hypothesis with the village dataset, with:
+
+* a t test.
+ - NB: as per STEPH, you technically first need to check the assumption that the variances are not different.
+* a Wilcoxon rank-sum test (Mann-Whitney U test)
+```{r}
+# F test for variances
+var.test(prevalence ~ group, data = vil)
+
+# t test
+t.test(prevalence ~ group, var.equal = T, data = vil)
+
+# Wilcoxon rank sum test
+vil %$% wilcox.test(prevalence ~ group)
+```
+t test p-value: 0.06.
+Wilcoxon rank-sum test p-value: 0.10
+
+
+## 2e. Comparison
+
+Compare the results in 2c and 2d.
+
+The χ² test using individual-level data ignores clustering and results in good evidence for an effect. The latter tests, which allow for the clustered design, only result in weak evidence.
+
+
+## 2f. Prevalence ratio 95% CI
+
+Optional. Obtain a 95% confidence interval for the estimate of the prevalence ratio.
+
+The equations are taken from the lecture notes. I don't know if there's a function that does this – there wasn't a Stata function as per the Stata practical.
+
+```{r}
+# Calculate prevalence in each arm
+ind %$% ctable(group, para, prop = "r")
+```
+
+```{r}
+# Prevalences in the two arms
+p0 <- 0.367
+p1 <- 0.298
+
+# Prevalence ratio and its log
+PR <- p1/p0
+logPR <- log(PR)
+
+# Standard deviations of the observed cluster prevalences
+# (not sure where these come from! Taken from the solutions)
+s1 <- 0.15
+s0 <- 0.196
+
+# Numbers of clusters
+c1 <- 17
+c0 <- 17
+
+# Variances of prevalences
+var_p1 <- (s1^2)/c1
+var_p0 <- (s0^2)/c0
+
+# Variance of the log PR
+var_logPR <- var_p1/(p1^2) + var_p0/(p0^2)
+
+# Confidence intervals
+lower_CI <- exp(logPR - 1.96 * sqrt(var_logPR))
+upper_CI <- exp(logPR + 1.96 * sqrt(var_logPR))
+lower_CI
+upper_CI
+```
+
+## 2g. GEE and RE logistic regression
+
+Use the individual dataset to perform the same analyses, but with logistic regression using:
+
+* Generalised Estimating Equations
+* Random effects model
+
+Compare the results with those from 2d.
+
+*-----*
+*ISSUE* 
+*-----*
+Need to work out GEE and RE first.
+
+-------------------------------------------------------------------------------
+
+
+# Part 3. Pair-matched cluster-randomised studies
+
+*Warning*: this part of the practical is rather convoluted, because it covers at the same time:
+- analysis of pair-matched CRTs
+- two-stage analysis of confounders with cluster-level analysis
+
+---
+ 
+These data are from a CRT in Mwanza investigating the effect of improved sexual health services on HIV incidence rate; it contains longitudinal data on a cohort who were negative at baseline.
+
+```{r}
+mz <- read_stata("mztrial.dta")
+glimpse(mz)
+```
+
+Variables that we will use:
+
+-*Outcome*: `hiv` (HIV status: 0 = negative, 1 = positive)
+-*Exposure*: `arm` (treatment arm: 0 = control, 1 = intervention)
+-*Cluster*:
+ * `comp` (community, 1-12)
+ * `pair` (matched pair, 1-6)
+-*Other*:
+ * `agegp` (age at baseline, 1 = 15-24, 2 = 25-34, 3 = 35-44, 4 = 45-54)
+ * `sex` (1 = male, 2 = female)
+ * `hivbase` (community HIV prevalence at baseline, %)
+
+Label values and factorise categorical variables.
+```{r}
+mz %<>% mutate(arm = factor(arm,
+                            levels = c(0, 1),
+                            labels = c("control", "intervention")),
+              comp = factor(comp),
+              pair = factor(pair),
+              agegp = factor(agegp,
+                             levels = 1:4,
+                             labels = c("15-24", "25-34", "35-44", "45-54")),
+              sex = factor(sex,
+                           levels = c(1, 2),
+                           labels = c("male", "female")))
+```
+
+
+## 3a. Predict estimated HIV probability
+
+Fit a logistic regression model to assess the relation between HIV status and potential confounders: including age, sex, matched pair and baseline HIV prevalence as covariates. *Do not* include the treatment.
+
+```{r}
+# Fit a model
+mod_hiv_prob <- glm(hiv ~ agegp + sex + pair + hivbase,
+                    family = binomial,
+                    data = mz)
+```
+
+Then use this model to predict each individual's probability of HIV from these factors.
+
+(I personally think it's helpful to explore this new variable with a summary and a histogram, not just looking at the data)
+
+```{r}
+# Calculate predicted probability of HIV
+mz$fitted_hiv_prob <- predict(mod_hiv_prob, type = "response")
+
+# Explore prediction of HIV
+summary(mz$fitted_hiv_prob)
+ggplot(mz, aes(fitted_hiv_prob)) + geom_histogram(bins = 10)
+```
+The median probality of HIV given those factors was 1.1%, but the distribution is quite skewed. This means that, without taking the intervention into account (ie, if the null hypothesis was true), we would expect 1.1% of the cohort to acquire HIV by the end of the follow-up period.
+
+## 3b. Compare observed and expected new cases
+
+Now let's compare the observed and predicted new cases of HIV in each community. We can do this with {dplyr}'s `group_by()` and `summarise()` functions, that are so much better than Stata's `collapse` function omg.
+
+```{r}
+mz_summary <- mz %>% group_by(pair, comp, arm) %>%
+  summarise("observed" = sum(hiv),
+            "at_risk" = n(),
+            "expected" = sum(fitted_hiv_prob))
+
+mz_summary
+```
+In community 1, 5 people acquired HIV out of 568 at risk, whilst the expected number would be 7.16 (assuming the intervention had no effect).
+
+## 3c. Unadjusted analysis
+
+### 3c1. Pairwise unadjusted risk ratios
+
+Calculate the unadjusted risk ratios for each matched pair, "RRj".
+```{r}
+mz_summary %<>% mutate(risk_percent = observed/at_risk * 100)
+
+mz_summary %>% dplyr::select(-expected)
+```
+```{r}
+# Pair-wise RRs
+## Terribly hard-coded, sorry!
+pairwise <- data.frame(
+  pair = 1:6,
+  RRj = c(0.880 / 1.425, 
+         0.522 / 0.840,
+         2.615 / 3.175,
+         1.771 / 3.026,
+         0.546 / 1.535,
+         0.715 / 1.443))
+pairwise
+```
+
+### 3c2. Paired t-test, unadjusted
+
+Now perform a *paired* t-test on the log(risk)s (not on the risks).
+
+The standard `t.test()` function has a `paired` option.
+
+*Minor issue*: I'm not sure how does it know which is the pairing variable? But it works for p-value and point estimate.
+
+```{r}
+# Paired t-test of the log risks
+paired_test <- t.test(log(observed/at_risk) ~ arm, paired = T, data = mz_summary)
+
+  # P value
+  paired_test$p.value
+```
+p = 0.004
+
+### 3c3. Unadjusted RR
+
+Calculate the point estimate for the unadjusted RR.
+
+(In the Stata practical it asks to do it by geometric mean of the pairwise RR...)
+
+```{r}
+# Unadjusted RR point estimate
+paired_test$estimate
+```
+
+### 3c4. Unadjusted 95% CI
+
+Obtain a 95% CI by exponentiating the 95% of log(risk)
+```{r}
+# 95% CI of log(risk)
+paired_test
+```
+
+*-----*
+*ISSUE* : For some reason I need to use the inverse of those values... 
+*-----*
+```{r}
+# 95% CI of RR
+exp(-0.864)
+exp(-0.277)
+```
+
+
+## 3d. Adjusted analysis
+
+### 3d1. Pairwise adjusted risk ratios
+
+You first need to calculate the O/E ratio
+```{r}
+mz_summary %<>% mutate(OE = observed/expected)
+```
+
+You can then compute the pairwise adjusted RRs
+```{r}
+# Pair-wise RRs
+## Again, this is awful
+pairwise_adj <- data.frame(
+  pair = 1:6,
+  RRj = c(0.698 / 1.275,
+          0.749 / 1.236,
+          1.020 / 0.983,
+          0.639 / 1.335,
+          0.581 / 1.317,
+          0.774 / 1.171))
+pairwise_adj
+```
+
+### 3d2. Paired t-test
+
+```{r}
+# Paired t-test of the log OE
+paired_test_adj <- t.test(log(OE) ~ arm, paired = T, data = mz_summary)
+
+  # P value
+  paired_test_adj$p.value
+```
+
+### 3d3. Unadjusted RR
+
+*-----*
+*ISSUE* 
+*-----*
+NB: this time if you use the estimate from the test you get 0.492, which is wrong. You'd need to calculate the geometric mean of the adjusted risk ratios. And I cba...
+```{r}
+# Unadjusted RR point estimate
+# paired_test_adj$estimate
+```
+
+### 3d4. Unadjusted 95% CI
+*-----*
+*ISSUE* 
+*-----*
+
+Who knows???
+-------------------------------------------------------------------------------
