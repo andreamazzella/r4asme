@@ -7,19 +7,24 @@ output: html_notebook
 
 -------------------------------------------------------------------------------
 
-*Warning:* This is a draft with major issues.
-
--------------------------------------------------------------------------------
-
 ## Contents
-* Analysis of correlated data
+* Analysis of correlated data with Poisson and logistic regression
  - robust standard errors
- - GEE (*broken*)
- - RE models (*broken*)
+ - Generalised Estimating Equations
+ - Random Effects models
 
 -------------------------------------------------------------------------------
 
 ## 0. Packages and options
+
+```{r}
+# install.packages("miceadds")    # robust standard errors
+# install.packages("lme4")        # RE
+# install.packages("broom")       # improve regression output
+# install.packages("broom.mixed") # improve regression output for lme4
+# install.packages("geepack")     # GEE
+```
+
 
 ```{r}
 # Load packages
@@ -27,10 +32,11 @@ library("haven")
 library("magrittr")
 library("summarytools")
 library("survival")
-library("miceadds")
-library("lme4")
-library("gee")
-library("epiDisplay")
+library("miceadds")    # robust standard errors
+library("lme4")        # RE
+library("broom")       # improve regression output
+library("broom.mixed") # improve regression output for lme4
+library("geepack")     # GEE
 library("tidyverse")
 
 # Limit significant digits to 3, remove scientific notation
@@ -40,7 +46,7 @@ options(digits = 3, scipen = 9)
 -------------------------------------------------------------------------------
 
 
-# Part 1: Poisson
+# Part 1: Poisson regression
 
 These data are from a pneumococcal vaccine trial performed in Papua New Guinea, assessing the vaccine efficacy in preventing clinical episodes of pneumonia among children.
 
@@ -114,7 +120,7 @@ summary(surv_papua)
 ```
 
 
-## 4. Invalid: Incidence rates and HR
+## 4. Incidence rates and HR (invalid)
 
 Calculate incidence rates in the vaccine and placebo arms, and calculate a rate ratio (without accounting for within-child clustering).
 
@@ -130,11 +136,13 @@ print("Rate ratio")
 From this (incorrect) analysis, the vaccine has a (mild) effect. (NB: from `stmh`: p = 0.02)
 
 
-## 5a. Invalid: Poisson ignoring clustering
+## 5a. Poisson ignoring clustering (invalid)
 
 Let's demonstrate that ordinary Poisson regression, ignoring clustering, is also invalid.
 
 Fit an ordinary Poisson regression model for the effect of vaccination.
+
+`broom::tidy()` can be used to improve the output of a `glm()` – it's an alternative to `epiDisplay::idr.display()`.
 
 ```{r}
 # Poisson model
@@ -142,7 +150,8 @@ pois_inv <- glm(any ~ vacc + offset(log(pyrs)),
                 family = "poisson",
                 data = papua)
 # HR and 95% CI
-idr.display(pois_inv)
+tidy(pois_inv, exponentiate = T, conf.int = T)
+?tidy.glm
 
 # log(SE)
 summary(pois_inv)
@@ -182,57 +191,44 @@ p = 0.10: only weak evidence for an association now.
 
 Now use a random effects model to account for within-child clustering.
 
-*-----*
-*ISSUE* 
-*-----*
-I don't really know how to use `lme4::glmer()`.
+We use `lme4::glmer()`. The overall syntax is the same as `glm()`; you specify the clustering factor like this: `+ (1|clustering_factor)`. (Statistically, this is a "scalar random effect term": it generates 1 random effect per cluster).
+
+The output can be much simplified with `broom.mixed::tidy()`.
 
 ```{r}
-
-?glmer
-
+# Fit model
 pois_re <- glmer(any ~ vacc + offset(log(pyrs)) + (1|id),
                  data = papua,
                  family = "poisson")
-
-summary(pois_re)
-
-# HR
-#coef(pois_re) %>% exp()
-
-# 95% CI
-#confint(pois_re) %>% exp()
-
-# SE of log(HR)
-
-
+# Output
+tidy(pois_re,
+     conf.int = TRUE,
+     exponentiate = TRUE,
+     effects = "fixed")
 ```
+HR: 0.89 (0.78-1.01) (p = 0.06)
+SE: 0.057
 
+*Minor issue* Stata also provides a measure of clustering, theta, and a LRT on the evidence of clustering. Not sure how to extract the theta from the `glmer()` output.
+(Stata - theta: 0.76, LRT: p < 0.001)
 
->Stata command and output:
-```{stata}
-streg i.vacc, dist(exp) frailty(gamma) shared(id)
+## 7. Vaccine efficacy
+
+In Stata, this is `xtpoisson` instead of `streg, shared(cluster)`. `xtpoisson` estimates a parameter α, whilst `streg` estimates a parameter θ (but their values are the same).
+
+What is the estimated vaccine efficacy, with an appropriate 95% CI?
+
+```{r}
+# Values from regression model
+rate_ratio <- 0.886
+rr_conf_low <- 0.780
+rr_conf_high <- 1.006
+
+# Calculate VE
+(vaccine_efficacy <- (1 - rate_ratio) * 100)
+(ve_conf_low <- (1 - rr_conf_high) * 100)
+(ve_conf_high <- (1 - rr_conf_low) * 100)
 ```
-HR: 0.88
-SE: 0.056
-Output also contains /lntheta and theta. (theta:rho = Poisson:binomial)
-LRT on theta 0: p < 0.001 - there is very strong evidence of clustering
-
-
-## 7. Another way of doing Poisson with random effects?
-
-In Stata, this is `xtpoisson` instead of `streg, shared(cluster)`. `xtpoisson` estimates a parameter α, whilst `streg` estimates a parameter θ.
-
->Stata
-```{stata}
-xtpoisson any i.vacc, re e(pyears) i(id) irr base
-```
-(irr = incidence HR)
-What is the estimated vaccine efficacy? What is an appropriate 95% confidence interval
-for this estimate?
-VE = 1-RR{v/u} /100 = 1-0.885 /100 = 11.5%
-95% CI: 0-22%
-p = 0.06
 
 
 ## 8. Age time-scale
@@ -247,10 +243,20 @@ surv_papua_age <- papua %$% Surv(time = as.numeric(timein) / 365.25,
 ```
 
 *-----*
-*ISSUE* 
-*-----*
-Again, I don't know how to use `glmer()`.
+*ISSUE* How do I use the new surv object in the glmer() function? 
+*-----* Do I need to offset for something other than pyrs?
 
+```{r}
+# Fit model
+pois_re_age <- glmer(any ~ vacc + offset(log(pyrs)) + (1|id),
+                 data = papua,
+                 family = "poisson")
+# Output
+tidy(pois_re_age,
+     conf.int = TRUE,
+     exponentiate = TRUE,
+     effects = "fixed")
+```
 >Stata
 ```{stata}
 streg i.vacc, dist(exp) frailty(gamma) shared(id) forceshared
@@ -286,26 +292,24 @@ papua %>% group_by(agegrp) %>% summarise(count = n(),
 
 ```
 
-We can now fit the RE model with sex and age as categorical covariates.
+We can now fit the RE model with sex and age as (categorical) covariates.
 
-Does this change the estimates? If so, why?
-
-*-----*
-*ISSUE* 
-*-----*
-Again, I don't know how to use `glmer()`.
+Does this change the estimates compared with Q6? If so, why?
 
 ```{r}
-
+# Fit model
+pois_re_age <- glmer(any ~ vacc + agegrp + sex + offset(log(pyrs)) + (1|id),
+                 data = papua,
+                 family = "poisson")
+# Output
+tidy(pois_re_age,
+     conf.int = TRUE,
+     exponentiate = TRUE,
+     effects = "fixed")
 ```
-
-> Stata code and output:
-```{stata}
-streg i.vacc i.agegrp i.sex, dist(exp) frailty(gamma) shared(id) base
-```
-    adjusted    unadj
-HR  0.91        0.88
-p   0.10        ?
+Effect of vaccine vs placebo:
+Adjusted:   HR 0.91 (0.82-1.02), p = 0.10
+Crude (Q6): HR 0.89 (0.78-1.01), p = 0.06
 
 Controlling for these baseline factors hasn't changed much the estimates – which makes sense, because this is a randomised trial. You can however still check for baseline differences if you want:
 ```{r}
@@ -316,7 +320,7 @@ papua %>% filter(anyprev == 1) %$% ctable(agegrp, vacc, prop = "c")
 -------------------------------------------------------------------------------
 
 
-# Part 2: Logistic
+# Part 2: Logistic regression
 
 These data are from a study on household contacts of tubercolosis cases. We will assess the effect of duration of cough in the index case on the odds of positive Mantoux test in the contacts. Since there is no time element, we will use logistic regression.
 
@@ -339,9 +343,8 @@ Variables that we will use:
 There are value labels in Stata, I'm not sure why haven can't import them. Let's add them, and remove variables we don't need. I'll add an "ix" to variables that relate to the index case because I get confused otherwise.
 
 ```{r}
-tb %<>% mutate(mantoux = factor(mantoux, levels = c(0, 1), labels = c("neg", "pos")),
-              ix_cough = factor(cough, levels = c(1, 2), labels = c("<2mo", ">=2mo")),
-              ix_hiv = factor(hiv, levels = c(1, 2), labels = c("neg", "pos"))) %>% 
+tb %<>% mutate(ix_cough = factor(cough, levels = c(1, 2), labels = c("<2mo", ">=2mo")),
+               ix_hiv = factor(hiv, levels = c(1, 2), labels = c("neg", "pos"))) %>% 
   select(-c("smear1", "crowding", "intimacy", "tbsite", "cavit", "cough", "hiv"))
 
 summary(tb)
@@ -349,83 +352,38 @@ summary(tb)
 
 ## 11. Explore clusters by HIV status of index case
 
-Summarise the dataset by household to explore the distribution of contacts stratified by HIV status of the index case.
-
-id > hiv > mantoux
-
-*-----*
-*ISSUE* Can't manage to use `group_by() %>% summarise()` to get the same results as that collapse function.
-*-----*
-
->
-collapse (count) contacts=mantoux (mean) hiv, by(id)
-tab contacts hiv
-(see output below)
+Summarise the dataset by index case to explore the distribution of number of contacts stratified by HIV status of the index case.
 
 ```{r}
-freq(tb$id)
-# Number of rows for each "id" (contacts in each household) is between 0 and 13.
+# Create summary data
+tb_summ <- tb %>% group_by(id) %>%
+                  summarise(n_contacts = n(),
+                            index_HIV = mean(as.numeric(ix_hiv)))
 
-#tb_summ <- tb %>% mutate(contacts = 1) %>% 
- # group_by(id, mantoux) %>%
-  #summarise(contacts = sum(contacts),
-#            hiv = sum(as.numeric(ix_hiv)))
-
-#tb_summ %$% ctable(hiv, contacts, prop = "n")
-
-
-
-
-#tb %>% group_by(id) %>%
- # summarise(contacts = n_distinct(mantoux))
-
-#ctable(contacts, hiv)
+# Crosstabulate
+tb_summ %$% ctable(n_contacts, index_HIV, prop = "n")
 ```
+The dataset contains a total of 70 index cases, 28 of whom were HIV negative and 42 HIV positive.
+8 index cases had only 1 contact in their household; 9 had 2, etc.
 
 
->
-11. Each record represents an individual household contact of a TB case. The variable id
-indicates which household contacts belong to the same household (and hence are contacts
-of the same index case). Use the following commands to examine the distribution of
-contacts per household by HIV status of the index case:
-```{stata}
-preserve
-collapse (count) contacts=mantoux (mean) hiv, by(id)
-tab contacts hiv
-restore
+## 12. Explore clusters by cough of index case
+
+Do the same but stratifying by duration of cough in the index case.
+
+```{r}
+# Create summary data
+tb_summ <- tb %>% group_by(id) %>%
+                  summarise(n_contacts = n(),
+                            index_cough = mean(as.numeric(ix_cough)))
+
+# Crosstabulate
+tb_summ %$% ctable(n_contacts, index_cough, prop = "n")
 ```
-   (count) |      (mean) hiv
-   mantoux |         1          2 |     Total
------------+----------------------+----------
-         1 |         3          5 |         8 
-         2 |         5          4 |         9 
-         3 |         3         10 |        13 
-         4 |         6          7 |        13 
-         5 |         2          5 |         7 
-         6 |         4          5 |         9 
-         8 |         2          3 |         5 
-         9 |         1          2 |         3 
-        10 |         1          0 |         1 
-        11 |         1          0 |         1 
-        13 |         0          1 |         1 
------------+----------------------+----------
-     Total |        28         42 |        70 
-
+32 index cases had a cough for 2 months or less, 26 for more than that; for 12, this information had not been recorded.
 	 
-	 
->
-12. Perform a similar analysis to examine the distribution of contacts per household by
-duration of cough of the index case. Why are only 58 households shown?
-```{stata}
-preserve
-collapse (count) contacts=mantoux (mean) cough, by(id)
-tab contacts cough
-restore
-```
-26 index cases had a cough (>2mos), 32 had a shorter duration (in 12 duration was not recorded).
 
-
-## 13. Invalid: crude analysis ignoring clustering
+## 13. Crude analysis ignoring clustering (invalid)
 
 Examine the distribution of positive Mantoux among contacts by the duration of cough in the index case, ignoring any clustering.
 
@@ -434,8 +392,9 @@ What's the OR and 95% CI? χ² p-value? What would you conclude?
 ```{r}
 tb %$% ctable(mantoux, ix_cough, prop = "c", OR = T, chisq = T)
 ```
-Igrosing clustering, 67% of positive people had an index case who had a cough for more than 2 months.
-OR 1.78 (1.06-3.01), p = 0.04
+Ignosing clustering, 67% of positive people had an index case who had a cough for more than 2 months.
+OR 1.78 (1.06-3.01), χ² p = 0.04
+With this (invalid) analysis, there is evidence of an association between being a contact of someone with cough of long duration and testing positive for TB.
 
 
 ## 14. Logistic regression with robust standard errors
@@ -459,11 +418,6 @@ confint(logit_rob) %>% exp()
 # SE of log(HR)
 summary(logit_rob)
 ```
-
-
-```{stata}
-logit mantoux i.cough, base or vce(cluster id)
-```
 OR 1.78 (0.90-3.52), p = 0.10: OR is the same, but CI is wider, and there is less evidence of an association.
 
 
@@ -473,82 +427,73 @@ Now fit the same logistic model but with Generalised Estimating Equations approa
 
 Compare the results with the ones above.
 
-This *should* be doable with function `gee()` from the package with the same name. The correlation matrix type goes into the "corstr" option.
+We can do this with `geepack::geeglm()`. The correlation matrix type goes into the "corstr" option. The standard errors are automatically calculated as robust.
 
-*-----*
-*ISSUE* 
-*-----*
-There's an error and I have no idea why.
+Note that this is a bit fiddly because the function requires the explanatory variables to not contain any missing data, so you  need to `drop_na()` your dataset.
 
 ```{r}
-?gee
-
-logit_gee <- gee(mantoux ~ ix_cough,
+# Fit GEE logistic model
+? geeglm
+tb_gee <- geeglm(mantoux ~ ix_cough,
+                 data = drop_na(tb, ix_cough),
                  id = id,
-                 family = binomial,
-                 data = tb,
+                 family = "binomial",
                  corstr = "exchangeable")
 
-summary(logit_gee)
+# Output
+tidy(tb_gee,
+     conf.int = TRUE,
+     exponentiate = TRUE)
 ```
+OR 1.88 (0.95-3.71)
+p = 0.07
 
->Stata command and output
-```{stata}
-xtlogit mantoux i.cough, pa corr(exch) i(id) vce(robust) or
+
+## 16. Logistic regression with RE and quadrature check
+
+Now do the same but with a random effects model, and do a LRT of rho = 0. Is there evidence of variation between households?
+
+(*Technical note*: there is now a new option, nAGQ = 12. This is because, by default, glmer() uses the Laplace approximation to the log likelihood (1 point per axis), whilst Stata uses the Gauss-Hermite quadratic approximation, with 12 points per axis; this is why you need to use `quadchk` in Stata with this model, so that you can ensure that this quadrature reasonable. Changing nAGQ slightly changes your CI and p-value. For some reason, in Stata the RE model in Q9 does not use quadrature, so even if you try and use `quadchk` it doesn't let you. Is it because that model has covariates? Or because it's a Poisson model? I don't know.)
+
+*Issue*: as earlier, I don't know how to do a LRT of rho = 0.
+
+```{r}
+# Fit model
+logit_re_age <- glmer(mantoux ~ ix_cough + (1|id),
+                 data = tb,
+                 family = "binomial",
+                 nAGQ = 12)
+# Output
+tidy(logit_re_age,
+     conf.int = TRUE,
+     exponentiate = TRUE,
+     effects = "fixed")
 ```
-OR 1.88 (0.94-3.73), Wald p = 0.07
-
-
-
-## 16. Logistic regression with RE
-
-Now do the same but with a random effects model, and do a LRT of rho = 0.
-
-Is there evidence of variation between households?
-*-----*
-*ISSUE* 
-*-----*
-Again, `glmer()`...
-
->Stata command and output
-```{stata}
-xtlogit mantoux i.cough, re i(id) base or
-```
-OR 2.19 (0.94-5.08), p = 0.07, rho = 0.25
-LRT of rho=0: p = 0.001
+OR 2.19 (0.94-5.08), p = 0.07.
+The OR estimate is higher than that from the GEE analysis. 
+rho = ? (from Stata: 0.25)
+LRT on rho=0, p = ? (from Stata: 0.001)
 
 Now check the reliability of these estimates with a quadrature check.
 
-*-----*
-*ISSUE* 
-*-----*
-I mean...
+I haven't found a function that's the exact equivalent to `quadchk()` in Stata. What I can do is fit two more models with different `nAGQ` values, and checking the difference in the estimates yourself. If the relative differences are < 0.01, the estimates from your model are reasonably reliable.
 
->stata command and output
-```{stata}
-quadchk, nooutput
+```{r}
+# Original model
+logit_re_age %>% fixef()
+
+# Model with 8 quadrature points
+glmer(mantoux ~ ix_cough + (1|id),
+      data = tb,
+      family = "binomial",
+      nAGQ = 8) %>% fixef()
+
+# Model with 16 quadrature points
+glmer(mantoux ~ ix_cough + (1|id),
+      data = tb,
+      family = "binomial",
+      nAGQ = 16) %>% fixef()
 ```
-                         Quadrature check
-               Fitted       Comparison     Comparison
-             quadrature     quadrature     quadrature
-             12 points      8 points       16 points
------------------------------------------------------
-Log          -164.52892     -164.52894     -164.52892
-likelihood                  -.00002205      3.680e-07   Difference
-                             1.340e-07     -2.237e-09   Relative difference
------------------------------------------------------
-mantoux:      .78267652      .78265355      .78267614
- 2.cough                    -.00002297     -3.796e-07   Difference
-                            -.00002935     -4.850e-07   Relative difference
------------------------------------------------------
-mantoux:      .08952303      .08952582      .08952296
-   _cons                     2.781e-06     -7.888e-08   Difference
-                             .00003106     -8.812e-07   Relative difference
------------------------------------------------------
-/:            .07423657      .07420017       .0742359
- lnsig2u                    -.00003639     -6.734e-07   Difference
-                            -.00049025     -9.071e-06   Relative difference
------------------------------------------------------
 All the relative differences are less than 0.01, suggesting that the estimates from the RE model are reasonably reliable.
 
 
@@ -561,53 +506,48 @@ Fit a random effects logistic model to estimate the odds of positive Mantoux acc
 
 How would you summarise and interpret your results?
 
-*-----*
-*ISSUE* 
-*-----*
-Again, `glmer()`...
+```{r}
+logit_re_multi <- glmer(mantoux ~ ix_cough + ix_hiv + agegrp + (1|id),
+                        data = tb,
+                        family = "binomial",
+                        nAGQ = 12)
 
->
-```{stata}
-xtlogit mantoux i.cough i.hiv i.agegrp, re i(id) base or
-quadchk, nooutput
+tidy(logit_re_multi,
+     conf.int = TRUE,
+     exponentiate = TRUE,
+     effects = "fixed")
 ```
-After adjusting for HIV, age group, and clustering, the odds of positive Mantoux in people with a cough are 1.85 times higher than in people with shorter cough. (OR 1.85, 0.79-4.31). There is very good evidence for this association (p = 0.0003).
+After adjusting for index case HIV, age group, and clustering, the odds of positive Mantoux in contacts of an index case with a cough lasting more than 2 months are 1.88 times higher than in contacts of indec cases with shorter cough duration. (CI 0.80-4.41). There is not good evidence for this association (p = 0.14)
+Estimates from Stata are slightly different (OR 1.85, 0.79-4.31, p = 0.15)
 
 
 ## 18. Logistic regression, GEE, with covariates
 
 Do the same as Q17 but with GEE, and compare the results.
 
-*-----*
-*ISSUE* 
-*-----*
-Same error as Q15.
-
 ```{r}
-logit_gee_covar <- gee(mantoux ~ ix_cough + ix_hiv + agegrp,
-                 id = id,
-                 family = binomial,
-                 data = tb,
-                 corstr = "exchangeable")
+logit_gee_covar <- geeglm(mantoux ~ ix_cough + ix_hiv + agegrp,
+                          data = drop_na(tb, ix_cough),
+                          id = id,
+                          family = "binomial",
+                          corstr = "exchangeable")
 
-summary(logit_gee_covar)
+# Output
+tidy(logit_gee_covar,
+     conf.int = TRUE,
+     exponentiate = TRUE)
 ```
-
->
-```{stata}
-xtlogit mantoux i.cough i.hiv i.agegrp, pa corr(exch) i(id) vce(robust) or base
-```
-OR 1.64 (0.81, 3.32)
+ OR 1.67 (0.83, 3.35)
+[OR 1.64 (0.81, 3.32) in Stata]
 
 
 As GEEs are not based on likelihood, we can't use LRTs. Instad, we can use Wald tests of simple and composite linear hypotheses.
 
-What hypotheses are being tested? What do you conclude?
+*-----*
+*ISSUE* I don't know the R equivalent to Stata's `testparm`.
+*-----*
 
-*-----*
-*ISSUE* 
-*-----*
-This is done with `testparm` in Stata, I don't know the R equivalent.
+What hypotheses are being tested? What do you conclude?
 
 >
 ```{stata}
