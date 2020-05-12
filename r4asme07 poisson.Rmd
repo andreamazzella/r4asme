@@ -139,7 +139,7 @@ The sex distribution is balanced, so sex is unlikely to be a confounder.
 -------------------------------------------------------------------------------
 
 
-5. Poisson regression with covariates
+## 5. Poisson regression with covariates
 
 Adjust for age, sex, and both with Poisson regression. Is there any indication of confounding?
 ```{r}
