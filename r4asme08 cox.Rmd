@@ -7,7 +7,7 @@ output: html_notebook
 
 -------------------------------------------------------------------------------
 
-## What you will learn
+## Contents
 
 * Cox regression models
  - simple
@@ -116,10 +116,7 @@ Output:
 
 ```{r}
 # Create Cox model
-cox_smok3 <- coxph(trin_surv ~ smok3, data = trin)
-
-# Cox output: HRs, tests
-cox_smok3
+(cox_smok3 <- coxph(trin_surv ~ smok3, data = trin))
 
 # Calculating 95% CIs for HRs
 confint(cox_smok3) %>% exp()
@@ -134,8 +131,8 @@ The mortality rate ratio appears to increase for each level of smoking; there is
 So, let's analyse the same association but with smoking coded as quantitative.
 ```{r}
 # Cox with numerical exposure
-cox_smok3_lin <- coxph(trin_surv ~ as.numeric(smok3), data = trin)
-cox_smok3_lin
+(cox_smok3_lin <- coxph(trin_surv ~ as.numeric(smok3), data = trin))
+
 confint(cox_smok3_lin) %>% exp()
 ```
 Now there is good evidence for a linear trend: from one level of smoking to the next, the rate increases by 1.30.
@@ -185,10 +182,9 @@ trin_surv_age <- trin %$% Surv(as.numeric(timein) / 365.25,
 #trin$timein_yr <- Epi::cal.yr(trin$timein, format="%d/%m/%Y")
 
 # Cox using the timeage as the time 
-cox_smok3_age <- coxph(trin_surv_age ~ smok3, data = trin)
-cox_smok3_age
-confint(cox_smok3_age) %>% exp()
+(cox_smok3_age <- coxph(trin_surv_age ~ smok3, data = trin))
 
+confint(cox_smok3_age) %>% exp()
 ```
 Surprise! (not.) The estimates are almost the same as before doing all this.
 
@@ -243,8 +239,7 @@ glm(death ~ offset(log(time)) + treat + logb0, family = poisson(), data = pbc) %
 surv_pbc <- Surv(pbc$time, pbc$death)
 
 # Cox model
-cox_bilir <- coxph(surv_pbc ~ treat + logb0, data = pbc)
-cox_bilir
+(cox_bilir <- coxph(surv_pbc ~ treat + logb0, data = pbc))
 exp(confint(cox_bilir))
 ```
 Poisson: HR 0.73 (0.49, 1.10), LRT p = 0.13
@@ -349,8 +344,7 @@ surv_white <- whitehall %$% Surv(time = as.numeric(timein) / 365.25,
                                  event = chd)
 
 # Cox
-cox_white <- coxph(surv_white ~ grade, data = whitehall)
-cox_white
+(cox_white <- coxph(surv_white ~ grade, data = whitehall))
 confint(cox_white) %>% exp()
 ```
 
@@ -366,8 +360,7 @@ surv_white_age <- whitehall %$% Surv(time = as.numeric(timein) / 365.25,
 summary(surv_white_age) # 40, 86
 
 # Cox
-cox_white_age <- coxph(surv_white_age ~ grade, data = whitehall)
-cox_white_age
+(cox_white_age <- coxph(surv_white_age ~ grade, data = whitehall))
 confint(cox_white_age) %>% exp()
 ```
 This HR is much lower than the previous one, indicating that age is a confounder for the effect of grade.

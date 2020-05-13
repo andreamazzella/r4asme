@@ -8,11 +8,13 @@ output: html_notebook
 -------------------------------------------------------------------------------
 
 ## Prerequisites
+
 * 1: Classical analysis of categorical variables
 * SME
- * My SME material is [here](https://github.com/andreamazzella/R4SME)
+ - My SME material is [here](https://github.com/andreamazzella/R4SME)
 
-## What you will learn
+## Contents
+
 This is a whirlwind summary of the four SME topics on logistic regression. 
 
 -------------------------------------------------------------------------------

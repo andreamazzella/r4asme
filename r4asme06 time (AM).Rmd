@@ -7,7 +7,7 @@ output: html_notebook
 
 -------------------------------------------------------------------------------
 
-## What you will learn
+## Contents
 
 * Create a "survival object" to analyse cohort studies
 * Calculate incidence rates from a cohort study

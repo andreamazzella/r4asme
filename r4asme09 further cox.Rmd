@@ -7,13 +7,12 @@ output: html_notebook
 
 -------------------------------------------------------------------------------
 
-## What you will learn
+## Contents
 * Examine the proportionality assumption in Cox models
  - graphically, with Nelson-Aalen plots
  - with a test for interaction
  - with a test for residuals
 * Cox regression with multiple covariates
-
 
 -------------------------------------------------------------------------------
 
@@ -80,8 +79,7 @@ surv_diet <- Surv(diet$fup, diet$chd)
 summary(surv_diet)
 
 # Cox model
-cox_hieng <- coxph(surv_diet ~ hieng, data = diet)
-cox_hieng
+(cox_hieng <- coxph(surv_diet ~ hieng, data = diet))
 cox_hieng$coefficients %>% exp()
 confint(cox_hieng) %>% exp()
 ```
@@ -122,7 +120,9 @@ Let's first split the data in two: before and after the median follow-up period.
 ```{r}
 # Calculate median follow-up ???
 summary(surv_diet)
-#plot(surv_diet)
+
+# plot(surv_diet)
+
 sf_diet
 
 # Split the dataset into two time-bands
@@ -137,8 +137,8 @@ We compare this model with another model without strata() with a LRT.
 NB: you need to fit a new basic model to the split dataset!
 ```{r}
 # Model with interaction
-cox_hieng_inter <- coxph(surv_diet ~ hieng * strata(timegroup), data = split_diet) 
-cox_hieng_inter
+(cox_hieng_inter <- coxph(surv_diet ~ hieng * strata(timegroup), data = split_diet))
+
 # Model without interaction
 cox_hieng_basic <- coxph(surv_diet ~ hieng, data = split_diet) 
 
@@ -188,8 +188,7 @@ Now do the same analyses in Q3 but using age as the time scale.
 split_diet_age <- survSplit(surv_diet_age ~ ., diet, cut = c(59.7), episode = "agegroup")
 
 # Cox with interaction for age
-cox_hieng_age_inter <- coxph(surv_diet_age ~ hieng * strata(agegroup), data = split_diet_age)
-cox_hieng_age_inter
+(cox_hieng_age_inter <- coxph(surv_diet_age ~ hieng * strata(agegroup), data = split_diet_age))
 
 # Cox without interaction
 cox_hieng_age_basic <- coxph(surv_diet_age ~ hieng, data = split_diet_age) 
@@ -218,12 +217,10 @@ The plot becomes very difficult to interpret, and the confidence intervals great
 
 ```{r}
 # Fit a Cox model 
-cox_fibre <- coxph(surv_diet ~ fibre_cat, data = split_diet)
-cox_fibre
+(cox_fibre <- coxph(surv_diet ~ fibre_cat, data = split_diet))
 
 # Cox with interaction
-cox_fibre_inter <- coxph(surv_diet ~ fibre_cat * strata(timegroup), data = split_diet) 
-cox_fibre_inter
+(cox_fibre_inter <- coxph(surv_diet ~ fibre_cat * strata(timegroup), data = split_diet))
 
 # LRT
 lrtest(cox_fibre, cox_fibre_inter)
@@ -232,12 +229,10 @@ lrtest(cox_fibre, cox_fibre_inter)
 Now let's do the same analyses (except NA plot) but using age time-scale.
 ```{r}
 # Cox model
-cox_fibre_age <- coxph(surv_diet_age ~ fibre_cat, data = split_diet_age)
-cox_fibre_age
+(cox_fibre_age <- coxph(surv_diet_age ~ fibre_cat, data = split_diet_age))
 
 # Cox model adjusting for age
-cox_fibre_age_inter <- coxph(surv_diet_age ~ fibre_cat * strata(agegroup), data = split_diet_age)
-cox_fibre_age_inter
+(cox_fibre_age_inter <- coxph(surv_diet_age ~ fibre_cat * strata(agegroup), data = split_diet_age))
 
 # LRT
 lrtest(cox_fibre_age, cox_fibre_age_inter)
@@ -299,8 +294,7 @@ ggforest(cox_fibre_age, data = diet)
 There is a quicker way of testing the assumption of proportional hazards: testing of residuals, with function `cox.zph()`.
 ```{r}
 # Test 
-pr_haz <- cox.zph(cox_hieng)
-pr_haz
+(pr_haz <- cox.zph(cox_hieng))
 
 # Plot curves
 ggcoxzph(pr_haz)

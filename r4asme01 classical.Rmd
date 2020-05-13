@@ -8,6 +8,7 @@ output: html_notebook
 -------------------------------------------------------------------------------
 
 ## Prerequisites
+
 You'll better understand this code if you know about the following concepts. If you want to learn more about them, you could go through some of my introductory material [here](https://github.com/andreamazzella/IntRo).
 
 * Use of .Rmd notebooks
@@ -18,7 +19,8 @@ You'll better understand this code if you know about the following concepts. If 
 * Operators `=` `|` `&` `~` `$` `[`
 
 
-## What you will learn
+## Contents
+
 * Basic data management
   * import
   * explore
@@ -38,18 +40,18 @@ You'll better understand this code if you know about the following concepts. If 
 
 ```{r message=FALSE, warning=FALSE}
 # Load packages
-library(haven)
-library(magrittr)
-library(epitools)
-library(epiDisplay)
-library(pubh)
-library(rstatix)
-library(tidyverse)
+library("haven")
+library("magrittr")
+library("epitools")
+library("summarytools")
+library("pubh")
+library("rstatix")
+library("tidyverse")
 
 # Limit significant digits to 2, remove scientific notation
 options(digits = 2, scipen = 999)
 ```
-
+NB: {summarytools} can have issues on Macs - you might need to install some other software. If you get an error message, try following the advice that it gives you.
 
 # Basic data management
 
@@ -75,13 +77,13 @@ Unfortunately, Stata help files cannot be accessed in R. Key points regarding th
 To look at the variables and their types:
 ```{r}
 # Variable names
-mwanza %>% names()
+names(mwanza)
 
 # Variable names, types, and first values
-mwanza %>% glimpse()
+glimpse(mwanza)
 
 # Visualise the whole dataset, including variable labels
-mwanza %>% View()
+View(mwanza)
 ```
 
 
@@ -105,14 +107,14 @@ To use a variable, you still need to specify which dataset it is from:
 With package {magrittr}, this can be written as:
 `dataset %$% function(variable1)`
 
-For example, to tabulate education by HIV status with column percents, you can use the `tabpct()` function:
+For example, to tabulate education by HIV status with column percents, you can use {summarytools}' `ctable()` function:
 ```{r}
 # These two are equivalent
-tabpct(mwanza$ed, mwanza$case, percent = "col", graph = F)
-mwanza %$% tabpct(ed, case, percent = "col", graph = F)
+ctable(mwanza$ed, mwanza$case, prop = "c")
+mwanza %$% ctable(ed, case, prop = "c")
 
-# Another option
-mwanza %$% epitable(case, ed)
+# Base R
+table(mwanza$ed, mwanza$case)
 ```
 
 Unlike Stata, you can't abbreviate function or variable names. But if you start typing a variable in a dataset, RStudio will guess what it is and you can select it by pressing Tab and then Enter.
@@ -122,14 +124,14 @@ For example, to do the same tabulation but only in those aged less than 30, you 
 ```{r}
 mwanza %>%
   filter(age1 <= 3) %$%
-  tabpct(ed, case, percent = "col", graph = F)
+  ctable(ed, case, prop = "c")
 ```
 
 I'm not sure what the equivalent for `by varlist1:` is in R – presumably, you would need some sort of iteration, like a `for` loop, which I think is beyond the scope of ASME.
 
 To get help about a function or a package, you put a question mark and then the name of that function/package:
 ```{r}
-?View
+? View
 ```
 There is also a lot of help online - if you get an error, try googling the error.
 
@@ -166,11 +168,9 @@ You can then crosstabulate with `table(..., useNA = "ifany")` to ensure this wen
 ```{r}
 # Create a new variable, relevel and label
 mwanza %<>%
-  mutate(age2 =  as.factor(
-    case_when(
-      age1 <= 2 ~ "15-24",
-      age1 == 3 | age1 == 4 ~ "25-34",
-      age1 == 5 | age1 == 6 ~ "35+")))
+  mutate(age2 =  as.factor(case_when(age1 <= 2 ~ "15-24",
+                                     age1 == 3 | age1 == 4 ~ "25-34",
+                                     age1 == 5 | age1 == 6 ~ "35+")))
 
 # Ensure it went ok
 mwanza %$% table(age1, age2, useNA = "ifany")
@@ -179,11 +179,11 @@ mwanza %$% table(age1, age2, useNA = "ifany")
 Missing values are recorded as NA in R. To tell R to treat the value of 9 as missing for variable `npa`, you have two options:
 a) assign the value NA to the subsetted filtered variable; b) use the `na_if()` function from the tidyverse, 
 ```{r}
-# Option a)
+# Option a: base R
 mwanza$npa[mwanza$npa == 9] <- NA
 
-# Option b)
-mwanza %<>% mutate(npa = na_if(npa, 9))
+# Option b: tidyverse
+# mwanza %<>% mutate(npa = na_if(npa, 9))
 
 # CHeck it worked ok
 mwanza %$% table(npa, useNA = "ifany")
@@ -219,18 +219,23 @@ mwanza %>% write_dta("mwanza2.dta")
 
 ## 7. Chi-squared testing
 
-Many ways of doing this. The most similar to Stata is using the `cc()` function from {epiDisplay}. To show percentages, you need to use `tabpct()` instead.
+Many ways of doing this. `ctable()` can do this by adding an option `chisq = T`. NB: R warns you a chi-square might not be ideal, because there are not many observations per cell. A Fisher test is more appropriate.
 
 What is the effect of education on HIV status?
 ```{r}
-mwanza %$% cc(ed, case, graph = F)
+# summarytools
+mwanza %$% ctable(ed, case, chisq = T)
+
+# Base R
+mwanza %$% chisq.test(ed, case)
+mwanza %$% fisher.test(ed, case)
 ```
 
 
 ## 8. Test for trend
 
 Is there a linear association?
-Note that occasionally R can give you a very precise output, when Stata would say "p = 0.0000".
+`prop_trend_test()` is from package {rstatix}. Note that occasionally R can give you a very precise output, when Stata would say "p = 0.0000".
 ```{r}
 # Test for trend
 mwanza %$% table(case, ed) %>%
@@ -240,7 +245,7 @@ mwanza %$% table(case, ed) %>%
 
 ## 9. Odds ratios
 
-Unlike Stata, R can calculate OR for each level of exposure with just one command.
+Unlike Stata, R can calculate OR for each level of exposure with just one command. This is from package {pubh}.
 ```{r}
 # Stratified ORs
 odds_trend(case ~ ed, data = mwanza)
@@ -253,22 +258,23 @@ It looks like more educated people have higher odds of having HIV than less educ
 Let's now check if this association still remains after accounting for age.
 ```{r}
 # Option A
-mwanza %$% epiDisplay::mhor(case, ed2, age2, graph = F)
+pubh::mhor(case ~ age2 / ed2, data = mwanza)
 
 # Option B
-pubh::mhor(case ~ age2 / ed2, data = mwanza)
+# mwanza %$% epiDisplay::mhor(case, ed2, age2, graph = F)
 ```
 
 
 ## 11. Odds ratios using logistic regression
 
-You can also use logistic regression without covariates to get the OR in all level; 
+You can also use logistic regression without covariates to get the OR in all level.
+`logistic.display()` makes the output of logistic regression easier to read, and more similar to Stata. `broom::tidy()` is an alternative that's more tidyverse-friendly.
 ```{r}
 # Logistic regression
 glm(case ~ ed,
     family = "binomial",
     data = mwanza) %>%
-  logistic.display()
+  epiDisplay::logistic.display()
 ```
 
 You can also add a covariate by adding it after `+`.
@@ -278,7 +284,7 @@ Note that the output provides not only the adjusted OR, but also the crude OR (w
 glm(case ~ ed + age2,
     family = "binomial",
     data = mwanza) %>%
-  logistic.display()
+  epiDisplay::logistic.display()
 ```
 
 -------------------------------------------------------------------------------

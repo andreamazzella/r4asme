@@ -1,13 +1,13 @@
 ---
 title: "7: Poisson regression in cohort studies"
 subtitle: "R 4 ASME"
-authors: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella) & Lakmal
+authors: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella) & Lakmal M.
 output: html_notebook
 ---
 
 -------------------------------------------------------------------------------
 
-## What you will learn
+## Contents
 
 * Poisson regression models
  - simple
