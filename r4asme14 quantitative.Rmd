@@ -1,0 +1,363 @@
+---
+title: "14: Analysis of quantitative data"
+subtitle: "R 4 ASME"
+authors: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+output: html_notebook
+---
+
+-------------------------------------------------------------------------------
+
+## Contents
+
+* Univariable linear regression models
+ - categorical exposure
+ - continuous exposure
+ - scatterplots
+ - ANOVA (F test)
+ - quadratic models
+ 
+* Multivariable linear regression models
+ - ANOVA (partial F test)
+ 
+* Plotting residuals
+ - Histograms
+ - Quantile-quantile plots
+ - Residuals vs fitted scatterplots
+ 
+* Log transformations
+
+-------------------------------------------------------------------------------
+
+## Packages, options, and data management
+
+```{r libraries message=FALSE, warning=FALSE}
+# Load packages
+library("haven")
+library("magrittr")
+library("broom")
+library("tidyverse")
+
+# Limit significant digits to 3, remove scientific notation
+options(digits = 3, scipen = 999)
+```
+
+Import and explore `whitehal.dta`. It contains data on risk factors for coronary heart disease; the variables we will explore were all collected at time of entry, so the data is cross-sectional.
+
+These are the variables of interest:
+* *Outcome*: systolic blood pressure (continuous: `sbp`)
+* *Exposure*: job grade (categorical: `grade4`)
+* *Confounder*: age (continuous: `agein`)
+
+```{r import}
+# Import the dataset
+whitehall <- read_stata("whitehal.dta")
+
+# Explore data types
+whitehall %>% select(sbp, grade4, agein) %>% glimpse()
+```
+
+As you can see, there are no value labels, so I'll add them using the dataset help file.
+```{r data_management}
+# Rename and factorise variables, label values
+whitehall %<>%
+  mutate(grade4 = factor(grade4,
+                         levels = c(1, 2, 3, 4),
+                         labels = c("admin", "profess", "clerical", "other"))) %>% 
+  select(id, sbp, grade4, agein)
+
+# Check it worked ok
+glimpse(whitehall)
+
+#Summarise
+summary(whitehall)
+```
+
+# 1. Summarise a continuous variable by a categorical one
+
+Summarise the sBP (mean and standard deviation) across the four job grade strata.
+
+```{r}
+whitehall %>% group_by(grade4) %>% summarise(n(), mean(sbp), sd(sbp))
+```
+
+
+# 2. Linear regression (univariable, categorical exposure)
+
+Fit a linear regression model for systolic blood pressure by job grade.
+What's the estimate (and 95% CI) of average sBP in a man in the "admin" group? And for a man in the "other" group?
+How does this compare with your answer to Q1?
+
+Linear regression is done with `lm()`. 
+`fct_relevel()` has a similar function to `b4` in Stata.
+```{r}
+# Linear regression
+(linear <- lm(sbp ~ grade4, whitehall))
+tidy(linear, conf.int = T)
+
+# Making "other" the baseline group
+lm(sbp ~ fct_relevel(grade4, "other"), whitehall) %>% tidy(conf.int = T)
+```
+Mean sBP for man in grade 1 (admin) = 133 mmHg (129-138)
+Mean sBP for man in grade 4 (other) = 138 (135-142)
+
+
+# 3. ANOVA
+
+Is there evidence to suggest that sBP is associated with job grade?
+
+In order to get the F statistic, you need to use `anova()`, comparing this model with a model with only the outcome.
+
+```{r}
+anova(linear,
+      lm(sbp ~ 1, whitehall))
+```
+F = 5.27
+ANOVA p = 0.0013
+There is good evidence for an association between job grade and sBP.
+
+
+# 4. Continuous exposures
+
+Explore the association between age and sBP with:
+* scatter plots
+* categorising age
+* regression models treating age as:
+ - linear
+ - quadratic
+ - categorical
+
+## 4a. Scatter plot
+
+Let's explore visually this association with a simple scatter plot.
+
+`geom_smooth()` automatically fits a line to the data.
+
+```{r}
+(scatter <- whitehall %>% ggplot(aes(x = agein, y = sbp)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  theme_bw() +
+  labs(title = "Systolic blood pressure by age",
+     x = "Age (years)",
+     y = "Systolic Blood Pressure (mmHg)"))
+```
+
+It's difficult to say wthether the relationship is linear or not by looking at the plot.
+
+
+## 4b. Categorise a continuous variable and summarise by categories
+
+Let's now summarise sBP by age categories, splitting age into 5-year groups from 40 to 60, and then one last 10-year group.
+```{r}
+# Categorise
+whitehall %<>% mutate(age_grp = cut(agein, breaks = c(seq(40, 60, 5), 70)))
+
+# Ensure it worked        
+whitehall %>%
+  group_by(age_grp) %>%
+  summarise(min(agein), max(agein))
+```
+
+We can now summarise sBP by age group.
+
+```{r}
+whitehall %>%
+  group_by(age_grp) %>%
+  summarise(n(), mean(sbp), sd(sbp))
+```
+
+sBP appears appears to "accelerate" with ade, so maybe a linear model is not the best way of fitting these data.
+
+
+## 4c. Quadratic model
+
+In order to fit a quadratic model we first need to centre the age around its mean, and then square this difference.
+
+```{r}
+whitehall %<>% mutate(age_cent = agein - mean(agein),
+                      age_cent_sq = age_cent ^ 2)
+```
+
+We can then fit two models: one with this centered age, the other with its quadratic.
+```{r}
+# Linear model
+linear_age <- lm(sbp ~ age_cent, whitehall)
+tidy(linear_age)
+
+# Quadratic model
+quadr_age <- lm(sbp ~ age_cent + age_cent_sq, whitehall)
+tidy(quadr_age)
+
+# F test
+anova(linear_age, quadr_age)
+```
+F test for the quadratic term
+F = 6.53
+p = 0.011
+This means that there is good evidence that the quadratic model fits the data better than a model with a linear age effect.
+
+Let's look at the quadratic fit and compare it with the linear one.
+
+Note that you don't need to predict the sbp values and plot those, you can simply add the quadratic model to  `geom_smooth()`.
+
+```{r}
+scatter + geom_smooth(method = "lm",
+                      formula = y ~ x + I(x^2),
+                      colour = "yellow")
+
+?geom_smooth
+```
+
+You can see that the quadratic and linear lines are almost the same.
+
+## 4d. Model with categorical age
+
+An alternative would be using age in groups as explanatory variable.
+
+```{r}
+categ <- lm(sbp ~ age_grp, whitehall)
+tidy(categ)
+
+anova(categ,
+      lm(sbp ~ 1, whitehall))
+```
+
+There is still extremely good evidence of an association.
+
+
+# 5. Adding a covariate
+
+Before looking at the data: could age confound this association between job grade and sBP?
+
+## 5a. Bonus scatterplot
+
+We can visualise this with one regression line per each grade4 stratum. In ggplot we do this by moving the grade4 variable form the `geom_point` layer to the main layer.
+
+```{r}
+whitehall %>% ggplot(aes(x = agein, y = sbp, colour = grade4)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", formula = y ~ x + I(x^2), se = F) +
+  viridis::scale_color_viridis(discrete = T) +
+  theme_bw() +
+  labs(title = "Systolic blood pressure by age and job grade",
+     x = "Age (years)",
+     y = "Systolic Blood Pressure (mmHg)",
+     colour = "Job grade")
+```
+
+
+## 5b. Multivariable linear regression
+
+Now add job grade as a covariate to the quadratic age model.
+
+After adjusting for age, is there evidence that job grade is associated with sBP?
+
+```{r}
+# Multivariable regression
+quadr_multi <- lm(sbp ~ grade4 + age_cent + age_cent_sq, whitehall)
+tidy(quadr_multi)
+
+# ANOVA
+anova(quadr_multi,
+      lm(sbp ~ age_cent + age_cent_sq, whitehall))
+```
+
+ANOVA (partial F-test) shows no evidence of association between job grade and sBP, once age is accounted for. This means that age is a confounder in this relationship.
+
+
+# 6 Plotting residuals
+
+We need to check the assumption that residuals are normally distributed, with either a histogram or a Q–Q plot
+
+## 6a. Histogram of residuals
+
+You use `resid()` to access the model residuals.
+
+```{r}
+# Histogram
+whitehall %>% mutate(residual = resid(quadr_multi)) %>% 
+  ggplot(aes(residual)) + geom_histogram()
+```
+
+## 6b. Q–Q plot of residuals
+ 
+A *quantile-quantile plot* is used to assess two distributions: in this case, the distribution of the residuals (y axis) vs the Normal distribution (x axis). Each point represents a quantile in both distribution. If distribution of quantiles were exactly Normal, all points will fall on the `y = x` line.
+
+In ggplot this is done with `geom_qq()`; for some reason you have to specify the variable in the `aes` option `sample =`. For reference, `stat_qq_line()` adds the line `y = x`.
+
+```{r}
+# Q–Q plot
+whitehall %>% mutate(residual = resid(quadr_multi)) %>% 
+  ggplot(aes(sample = residual)) +
+  geom_qq() +
+  stat_qq_line()
+```
+Both plots reveal some skew to the right. See Q7 for an attempt at minimising this skew.
+
+
+## 6c. Residuals vs fitted scatterplot
+
+We can also plot the residuals vs the fitted sBPs.
+
+```{r}
+whitehall %>% mutate(residual = resid(quadr_multi),
+                     predicted = predict(quadr_multi)) %>% 
+  ggplot(aes(predicted, residual)) +
+  geom_point(alpha = 0.25) +
+  geom_hline(yintercept = 0, colour = "red") +
+  theme_bw()
+```
+
+There doesn't seem to be a clear relation between these, and the residual variance seems to be constant.
+
+
+
+# 7 Log transformation
+
+A log transformation of the outcome variable can ofter remove skew.
+
+## 7a. Fit a log outcome linear regression model.
+
+Fit a simple linear regression model, with log_sbp depending only on grade4.
+
+```{r}
+log_linear <- lm(log(sbp) ~ grade4, whitehall)
+```
+
+## 7b. Assess residual distribution
+
+As per Q6.
+
+```{r}
+# Histogram
+whitehall %>% mutate(residual = resid(log_linear)) %>% 
+  ggplot(aes(residual)) + geom_histogram()
+
+# Q–Q plot
+whitehall %>% mutate(residual = resid(log_linear)) %>% 
+  ggplot(aes(sample = residual)) +
+  geom_qq() +
+  stat_qq_line()
+
+# Residuals vs fitted
+whitehall %>% mutate(residual = resid(log_linear),
+                     predicted = predict(log_linear, type = "response")) %>% 
+  ggplot(aes(predicted, residual)) +
+  geom_point(alpha = 0.25) +
+  geom_hline(yintercept = 0, colour = "red")
+```
+
+The distribution of residuals is now less skewed; the plot of residuals vs fitted shows no clear pattern, and the variance seems constant: the model assumptions are now more appropriate.
+(NB: there are only four predicted log sBPs now, because this model only contains a categorical exposure).
+
+
+## 7c. Exponentiating
+
+How do you interpret the model estimates?
+
+NB: we can back-transform the output from the log scale by exponentiating. This can be done automatically with function `tidy()`.
+```{r}
+tidy(log_linear, exponentiate = T, conf.int = T)
+```
+
+-------------------------------------------------------------------------------
