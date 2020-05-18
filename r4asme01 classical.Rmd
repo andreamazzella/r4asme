@@ -27,6 +27,7 @@ You'll better understand this code if you know about the following concepts. If 
   * clean
   * tidy
   * export
+
 * Classical statistical analysis of categorical variables
   * chi-squared test
   * test for trend

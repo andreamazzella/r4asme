@@ -8,10 +8,12 @@ output: html_notebook
 -------------------------------------------------------------------------------
 
 ## Contents
+
 * Examine the proportionality assumption in Cox models
  - graphically, with Nelson-Aalen plots
  - with a test for interaction
  - with a test for residuals
+ 
 * Cox regression with multiple covariates
 
 -------------------------------------------------------------------------------
@@ -300,5 +302,4 @@ There is a quicker way of testing the assumption of proportional hazards: testin
 ggcoxzph(pr_haz)
 ```
 
-
-
+-------------------------------------------------------------------------------

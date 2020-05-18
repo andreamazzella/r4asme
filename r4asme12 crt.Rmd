@@ -1,17 +1,17 @@
 ---
 title: "12: Cluster-randomised trials"
 subtitle: "R 4 ASME"
-authors: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+author: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
 -------------------------------------------------------------------------------
 
-*Warning:* This is a draft with some issues.
+*Warning:* This is a draft with a few issues.
 
 -------------------------------------------------------------------------------
 
-## Content
+## Contents
 * CRT sample size calculation
  - difference in rates
 
@@ -19,32 +19,30 @@ output: html_notebook
  - t-test
  - Wilcoxon rank-sum test
  
-* Individual-level analysis (*broken*)
+* Individual-level analysis (issues)
  - RE
  - GEE
  
 * Analysis of pair-matched studies
  - pairwise t-test
- - Adjusted measures of effect with two-stage procedure
+ - Adjusted measures of effect with two-stage procedure (issues)
 
 -------------------------------------------------------------------------------
 
 ## 0. Packages and options
+
 ```{r}
 # install.packages("clusterPower")
 ```
 
 ```{r}
 # Load packages
-library("clusterPower")
+library("clusterPower") # CRT sample size calculations
 library("haven")
 library("magrittr")
 library("summarytools")
-#library("survival")
-#library("miceadds")
-#library("lme4")
-#library("gee")
-#library("epiDisplay")
+library("lme4")
+library("geepack")
 library("tidyverse")
 
 # Limit significant digits to 3, remove scientific notation
@@ -167,7 +165,7 @@ vil %>% group_by(group) %>% summarise(mean(prevalence))
 We get different prevalences and prevalence ratios if we use the village or the individual dataset. (PR 0.71 vs 0.81).
 
 
-## 2c. Invalid: χ² test, ignoring clustering
+## 2c. χ² test, ignoring clustering (invalid)
 
 Now test the hypothesis that the intervention is associated with a reduction in malaria prevalence by using a χ² test. Ignore the clustering for now.
 Use the invididual dataset.
@@ -177,7 +175,7 @@ ind %$% ctable(group, para, prop = "r", chisq = T)
 χ² p-value is 0.01.
 
 
-## 2d. Valid: t-test and Wilcoxon rank-sum test
+## 2d. t-test and Wilcoxon rank-sum test
 
 Test the same hypothesis with the village dataset, with:
 
@@ -257,10 +255,53 @@ Use the individual dataset to perform the same analyses, but with logistic regre
 
 Compare the results with those from 2d.
 
+First, we'll use parasite count as an outcome, so we need it recoded as a binary 0/1 variable.
+```{r}
+# Check level structure
+levels(ind$para)
+
+# Recode
+ind %<>% mutate(para01 = recode(para, "positive" = 1, "negative" = 0))
+```
+
 *-----*
-*ISSUE* 
+*ISSUE* Wrong estimates...
 *-----*
-Need to work out GEE and RE first.
+
+```{r GEE}
+# Fit GEE logistic model
+ind_gee <- geeglm(para01 ~ group,
+                 data = ind,
+                 id = vid,
+                 family = "binomial",
+                 corstr = "exchangeable")
+
+# Output
+tidy(ind_gee,
+     conf.int = TRUE,
+     exponentiate = TRUE)
+```
+ OR 1.79 (1.10-2.92), p = 0.02 *ISSUE*
+[OR 0.61 (0.36-1.03, p = 0.065 with Stata?!)]
+
+*-----*
+*ISSUE* Wrong estimates...
+*-----*
+
+```{r RE}
+# Fit model
+ind_re <- glmer(para01 ~ group + (1|vid),
+                 data = ind,
+                 family = "binomial",
+                 nAGQ = 12)
+# Output
+tidy(ind_re,
+     conf.int = TRUE,
+     exponentiate = TRUE,
+     effects = "fixed")
+```
+ OR 1.72 (0.95-3.08), p = 0.072 *ISSUE*
+ OR 0.58 (0.32-1.05), p = 0.072 with Stata
 
 -------------------------------------------------------------------------------
 
@@ -408,7 +449,7 @@ paired_test
 ```
 
 *-----*
-*ISSUE* : For some reason I need to use the inverse of those values... 
+*ISSUE* For some reason I need to use the inverse of those values... 
 *-----*
 ```{r}
 # 95% CI of RR
@@ -456,7 +497,7 @@ paired_test_adj <- t.test(log(OE) ~ arm, paired = T, data = mz_summary)
 *-----*
 *ISSUE* 
 *-----*
-NB: this time if you use the estimate from the test you get 0.492, which is wrong. You'd need to calculate the geometric mean of the adjusted risk ratios. And I cba...
+NB: this time if you use the estimate from the test you get 0.492, which is wrong. You'd need to calculate the geometric mean of the adjusted risk ratios.
 ```{r}
 # Unadjusted RR point estimate
 # paired_test_adj$estimate

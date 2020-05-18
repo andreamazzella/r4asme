@@ -1,7 +1,7 @@
 ---
 title: "14: Analysis of quantitative data"
 subtitle: "R 4 ASME"
-authors: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+author: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
@@ -30,7 +30,7 @@ output: html_notebook
 
 ## Packages, options, and data management
 
-```{r libraries message=FALSE, warning=FALSE}
+```{r libraries}
 # Load packages
 library("haven")
 library("magrittr")
@@ -38,7 +38,10 @@ library("broom")
 library("tidyverse")
 
 # Limit significant digits to 3, remove scientific notation
-options(digits = 3, scipen = 999)
+options(digits = 3, scipen = 9)
+
+# Change ggplot default theme to B&W
+theme_set(theme_bw())
 ```
 
 Import and explore `whitehal.dta`. It contains data on risk factors for coronary heart disease; the variables we will explore were all collected at time of entry, so the data is cross-sectional.
@@ -89,6 +92,7 @@ How does this compare with your answer to Q1?
 
 Linear regression is done with `lm()`. 
 `fct_relevel()` has a similar function to `b4` in Stata.
+*Did you know?* If you put a command with an assignment into brackets, it will do the assignment *and* print its output.
 ```{r}
 # Linear regression
 (linear <- lm(sbp ~ grade4, whitehall))
@@ -101,7 +105,7 @@ Mean sBP for man in grade 1 (admin) = 133 mmHg (129-138)
 Mean sBP for man in grade 4 (other) = 138 (135-142)
 
 
-# 3. ANOVA
+# 3. ANOVA: F test
 
 Is there evidence to suggest that sBP is associated with job grade?
 
@@ -136,7 +140,6 @@ Let's explore visually this association with a simple scatter plot.
 (scatter <- whitehall %>% ggplot(aes(x = agein, y = sbp)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "lm") +
-  theme_bw() +
   labs(title = "Systolic blood pressure by age",
      x = "Age (years)",
      y = "Systolic Blood Pressure (mmHg)"))
@@ -225,7 +228,7 @@ anova(categ,
 There is still extremely good evidence of an association.
 
 
-# 5. Adding a covariate
+# 5. Multivariable linear regression
 
 Before looking at the data: could age confound this association between job grade and sBP?
 
@@ -236,17 +239,19 @@ We can visualise this with one regression line per each grade4 stratum. In ggplo
 ```{r}
 whitehall %>% ggplot(aes(x = agein, y = sbp, colour = grade4)) +
   geom_point(alpha = 0.5) +
-  geom_smooth(method = "lm", formula = y ~ x + I(x^2), se = F) +
+  geom_smooth(method = "lm",
+              formula = y ~ x + I(x^2),
+              se = F) +
   viridis::scale_color_viridis(discrete = T) +
-  theme_bw() +
   labs(title = "Systolic blood pressure by age and job grade",
-     x = "Age (years)",
-     y = "Systolic Blood Pressure (mmHg)",
-     colour = "Job grade")
+       subtitle = "Quadratic effects",
+       x = "Age (years)",
+       y = "Systolic Blood Pressure (mmHg)",
+       colour = "Job grade")
 ```
 
 
-## 5b. Multivariable linear regression
+## 5b. Adding a covariate and partial F test
 
 Now add job grade as a covariate to the quadratic age model.
 
@@ -257,7 +262,7 @@ After adjusting for age, is there evidence that job grade is associated with sBP
 quadr_multi <- lm(sbp ~ grade4 + age_cent + age_cent_sq, whitehall)
 tidy(quadr_multi)
 
-# ANOVA
+# ANOVA: partial F test
 anova(quadr_multi,
       lm(sbp ~ age_cent + age_cent_sq, whitehall))
 ```
@@ -290,7 +295,7 @@ In ggplot this is done with `geom_qq()`; for some reason you have to specify the
 whitehall %>% mutate(residual = resid(quadr_multi)) %>% 
   ggplot(aes(sample = residual)) +
   geom_qq() +
-  stat_qq_line()
+  stat_qq_line(colour = "green")
 ```
 Both plots reveal some skew to the right. See Q7 for an attempt at minimising this skew.
 
@@ -304,8 +309,7 @@ whitehall %>% mutate(residual = resid(quadr_multi),
                      predicted = predict(quadr_multi)) %>% 
   ggplot(aes(predicted, residual)) +
   geom_point(alpha = 0.25) +
-  geom_hline(yintercept = 0, colour = "red") +
-  theme_bw()
+  geom_hline(yintercept = 0, colour = "red")
 ```
 
 There doesn't seem to be a clear relation between these, and the residual variance seems to be constant.
@@ -337,7 +341,7 @@ whitehall %>% mutate(residual = resid(log_linear)) %>%
 whitehall %>% mutate(residual = resid(log_linear)) %>% 
   ggplot(aes(sample = residual)) +
   geom_qq() +
-  stat_qq_line()
+  stat_qq_line(colour = "green")
 
 # Residuals vs fitted
 whitehall %>% mutate(residual = resid(log_linear),

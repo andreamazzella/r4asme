@@ -1,7 +1,7 @@
 ---
 title: "11: Analysis of correlated data"
 subtitle: "R 4 ASME"
-authors: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+author: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
@@ -526,7 +526,7 @@ Estimates from Stata are slightly different (OR 1.85, 0.79-4.31, p = 0.15)
 Do the same as Q17 but with GEE, and compare the results.
 
 ```{r}
-logit_gee_covar <- geeglm(mantoux ~ ix_cough + ix_hiv + agegrp,
+logit_gee_covar <- geeglm(mantoux ~ ix_cough + ix_hiv + factor(agegrp),
                           data = drop_na(tb, ix_cough),
                           id = id,
                           family = "binomial",
@@ -537,24 +537,31 @@ tidy(logit_gee_covar,
      conf.int = TRUE,
      exponentiate = TRUE)
 ```
- OR 1.67 (0.83, 3.35)
+ OR 1.64 (0.82, 3.30)
 [OR 1.64 (0.81, 3.32) in Stata]
 
 
-As GEEs are not based on likelihood, we can't use LRTs. Instad, we can use Wald tests of simple and composite linear hypotheses.
-
-*-----*
-*ISSUE* I don't know the R equivalent to Stata's `testparm`.
-*-----*
+As GEEs are not based on likelihood, we can't use LRTs. Instad, we can use Wald tests of simple and composite linear hypotheses. The equivalent to Stata's `testparm` is using `anova()` to compare a model with age and a model without age.
 
 What hypotheses are being tested? What do you conclude?
 
->
-```{stata}
-testparm 2.agegrp 3.agegrp
+```{r}
+# Model without age
+logit_gee_covar_2 <- geeglm(mantoux ~ ix_cough + ix_hiv,
+                          data = drop_na(tb, ix_cough),
+                          id = id,
+                          family = "binomial",
+                          corstr = "exchangeable")
+
+# ANOVA
+anova(logit_gee_covar, logit_gee_covar_2)
 ```
-Test linear hypotheses after estimation
-H0: after taking account of... there is no association between age and outcome. 
-p >chi2: <0.001
+Result: χ² = 31, p < 0.001
+[Stata] χ² = 30.4, p < 0.001
+
+H0: there is no association between age and TB, after adjusting for the index case's HIV status and cough duration.
+H1: there is such an association
+
+There is very strong evidence against no association.
 
 -------------------------------------------------------------------------------
