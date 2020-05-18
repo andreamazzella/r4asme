@@ -1,0 +1,288 @@
+---
+title: "15: Additive and multiplicative models"
+subtitle: "R 4 ASME"
+author: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+output: html_notebook
+---
+
+-------------------------------------------------------------------------------
+
+## Contents
+
+* *Draft.* Need to research additive Poisson.
+
+-------------------------------------------------------------------------------
+
+## Packages and options
+
+```{r libraries}
+# Load packages
+library("haven")
+library("magrittr")
+library("broom")
+library("mgcv")      # additive models
+library("tidyverse")
+
+# Limit significant digits to 3, remove scientific notation
+options(digits = 3, scipen = 9)
+```
+
+-------------------------------------------------------------------------------
+
+# 1.
+
+(pen and paper question)
+
+# 2.
+
+## 2a. Data import, exploration, and management
+
+Import and explore `goldmine.dta`. It contains data from a historical cohort studies exploring the risk factors for tubercolosis among male gold miners in South Africa.
+
+These are the variables of interest.
+
+**Outcome*:
+ - `tb` (tubercolosis diagnosis, 0/1)
+
+**Exposures*:
+ - `hiv` (HIV status at entry: 0/1)
+ - `silic` (silicosis grad: 0 = "none", 1 = "possible", 2 = "early", 3 = "advanced")
+ 
+**Time*:
+ -`entry` (date of entry, formatted as number of days)
+ -`exit` (date of exit, formatted as number of days)
+ -`dob` (date of birth, formatted as number of days)
+
+```{r import}
+# Import the dataset
+gold <- read_stata("goldmine.dta") %>% select(tb, hiv, silic, entry, exit)
+
+# Explore data types
+glimpse(gold)
+```
+
+We need to transform these days into person-years, and to remove observations with a missing silicosis value. Also, let's factorise and label the exposures.
+
+As we won't need to do Lexis expansions or Cox regressions, we don't need to `Surv()` our data.
+```{r data management}
+gold %<>% mutate(pyears = (exit - entry) / 365.25,
+                 hiv = factor(hiv, levels = c(0, 1), labels = c("neg", "pos")),
+                 silic = factor(silic,
+                                levels = 0:3,
+                                labels = c("none", "possible", "early", "advanced"))) %>%
+          drop_na(silic) %>% 
+          select(-c("entry", "exit"))
+```
+
+Let's summarise this subsetted data to calculate cases, person-years and incidence rates of TB according to HIV status and then silicosis.
+
+```{r rates}
+# General summary
+summary(gold)
+sum(gold$pyears)
+
+# Incidence by HIV
+gold %>% group_by(hiv) %>% summarise(count = sum(tb),
+                                     person_years = sum(pyears),
+                                     rate_percent = sum(tb) / sum(pyears) * 100)
+
+# Incidence by silicosis
+gold %>% group_by(silic) %>% summarise(count = sum(tb),
+                                       person_years = sum(pyears),
+                                       rate_percent = sum(tb) / sum(pyears) * 100)
+```
+Participants were followed up for a maximum of 6 years. Total of 9947 person-years. Incidence rate 1.1% in HIV neg, 4.9% in PLHIV.
+
+
+## 2b. Crude effect of HIV
+
+Estimate the crude effect of HIV on TB rate with Poisson regression.
+
+```{r}
+crude_hiv <- glm(tb ~ hiv + offset(log(pyears)),
+                 family = "poisson",
+                 gold)
+
+tidy(crude_hiv, exponentiate = T, conf.int = T)
+```
+HR (HIV+ vs HIV-) 4.59 (3.48-6.10)
+
+
+## 2c. Crude effect of silicosis
+
+Do the same but for silicosis.
+
+```{r}
+crude_silic <- glm(tb ~ silic + offset(log(pyears)),
+                   family = "poisson",
+                   gold)
+
+tidy(crude_silic, exponentiate = T, conf.int = T)
+```
+HR (baseline: no silicosis)
+- possible silicosis: 1.83 (1.29-2.54)
+- early silicosis:    3.53 (2.13-5.53)
+- advanced silicosis: 3.58 (2.31-5.35)
+
+
+## 2d. Biological plausibility
+
+(pen and paper question)
+
+
+## 2e. Multivariable Poisson with multiplicative effects
+
+Now examine the combined effects of HIV and silicosis in a multivariable model. Let's use first a multiplicative model, and let's assess if there's interaction on the multiplicative scale.
+
+```{r}
+# Multiplicative without interaction
+multipl <- glm(tb ~ hiv + silic + offset(log(pyears)),
+               family = "poisson",
+               gold)
+
+# Multiplicative with interaction
+mul_int <- glm(tb ~ hiv * silic + offset(log(pyears)),
+               family = "poisson",
+               gold)
+
+# LRT
+epiDisplay::lrtest(multipl, mul_int)
+
+# Output from first model
+tidy(multipl, conf.int = T, exponentiate = T)
+```
+LRT for interaction, p = 0.43. There is no evidence of interaction on the multiplicative scale.
+The rate of tubercolosis in HIV-positive men with advacned silicosis was 20 times higher compared to HIV-negative men without silicosis (HR = 4.82 × 4.12 = 19.9)
+
+### 2e2. Comparing expected and observed cases with multiplicative model
+
+Now obtain the predicted number of tubercolosis cases across HIV and silicosis strata from this model.
+Note that you can nest `predict()` inside `mutate()`, so you don't have to add a permanent predicted variable to your dataset.
+
+```{r}
+gold %>% mutate(predicted_TB = predict(multipl, type = "response")) %>% 
+         group_by(hiv, silic) %>%
+         summarise(observed_TB = sum(as.numeric(tb)),
+                   predicted_TB = sum(predicted_TB),
+                   OE_difference = abs(observed_TB - predicted_TB))
+```
+
+For all covariates, the observed number of TB cases is similar to the predicted number under the multiplicative model.
+
+
+## 2f. Multivariable Poisson with additive effects
+
+Now fit the same model, but with additive effects, as there is biological plausibility for additive effects.
+Is there evidence of interaction on this scale?
+
+Function `gam()` from package {mgcv} *should* be able to fit (mixed) generalised additive models.
+There's also `gam()` from {gam}.
+
+*-----------*
+*---ISSUE---* I don't know how to use `gam()` with Poisson and an identity link.
+*-----------* Should I remove pyears from the offset?
+
+```{r broken}
+library("mgcv")
+gold %<>% mutate(tb_rate = (tb / pyears))
+
+?mgcv::gam()
+
+# Additive model without interaction - broken
+additive <- mgcv::gam(tb_rate ~ hiv + silic + offset(log(pyears)),
+                      family = poisson(link = "identity"),
+                      gold)
+summary(additive)
+coef(additive) %>% exp()
+
+# Additive model with interaction - broken
+additive_inter <- mgcv::gam(tb_rate ~ hiv * silic + offset(log(pyears)),
+                            family = poisson(link = "identity"),
+                            gold)
+summary(additive_inter)
+coef(additive_inter) %>% exp()
+
+# LRT
+epiDisplay::lrtest(additive, additive_inter)
+
+# gam::gam()
+library("gam")
+additive_2 <- gam::gam(tb ~ hiv + silic,
+                     family = poisson(),
+                     gold)
+?gam::gam()
+tidy(additive_2)
+```
+
+> Below: Stata stuff
+The analysis is performed using the glm command (see Appendix to Session 16) using the rate
+(rather than the number of TB cases) as the outcome. First perform a LRT for interaction by
+comparing the log likelihood in the models with and without interaction:
+```{stata}
+gen rate = tb/pyears
+glm rate i.hiv i.silic [iweight=pyears], family(poisson) link(identity)
+est store A
+glm rate i.hiv##i.silic [iweight=pyears], family(poisson) link(identity)
+est store B
+lrtest A B
+```
+Stata output for model 1:
+------------------------------------------------------------------------------
+             |                 OIM
+        rate |      Coef.   Std. Err.      z    P>|z|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+       1.hiv |   .0359824   .0043567     8.26   0.000     .0274435    .0445214
+             |
+       silic |
+          1  |   .0090604   .0037984     2.39   0.017     .0016156    .0165052
+          2  |   .0272015   .0118625     2.29   0.022     .0039514    .0504516
+          3  |   .0383819   .0105738     3.63   0.000     .0176577    .0591062
+             |
+       _cons |   .0070582   .0011093     6.36   0.000      .004884    .0092324
+------------------------------------------------------------------------------
+//the link function is the transformation that is done to the outcome before analysis - in the additive model we are not transforming with the link function, but are still using poisson data
+The LRT is given by 16.82 [2*(-955.979- -964.390)] which is a chi-square with 3 df, giving
+p=0.0008 and so there is strong evidence of interaction on the additive scale. Note that all three
+interaction terms are positive and the “main effects” are also positive (so all RRs>1), suggesting
+that the effects are more than additive (multiplicative, perhaps).
+
+
+### 2f2. Comparing expected and observed cases with additive model
+
+We *should* be able to obtain the predicted number of tubercolosis cases, according to HIV status and silicosis, in the additive model, like this.
+
+*-----------*
+*---ISSUE---* This relies on a functioning model...
+*-----------*
+
+```{r broken2}
+# Broken
+gold %>% mutate(expected_rate = predict(additive, type = "response")) %>% 
+         group_by(hiv, silic) %>%
+         summarise(observed_TB = sum(as.numeric(tb)),
+                   expected_TB = expected_rate * pyears,
+                 # expected_rate = sum(expected_rate),
+                   OE_difference = abs(observed_TB - expected_TB))
+```
+
+
+>
+```{stata}
+preserve
+collapse (sum) tb pyears, by(hiv silic)
+gen rate=tb/pyears
+glm rate i.hiv i.silic [iweight=pyears], family(poisson) link(identity)
+predict expectrate
+gen tbexpect=expectrate*pyears
+list hiv silic tb tbexpect
+restore
+list hiv silic tb tbexpect
+```
+[As the model is based on the outcome of a rate the predict command calculates the expected
+rate for each of the 8 unique combinations. This predicted rate is then multiplied by the personyears to obtain the expected number of TB cases]
+For some covariates, the observed number of TB cases differs markedly from the expected
+number under the additive model. In summary, the strong evidence for an interaction (p=0.0008)
+and the discrepancies between the observed and expected values for the additive model suggest
+that the effects of HIV and silicosis do not combine additively.
+
+-------------------------------------------------------------------------------
