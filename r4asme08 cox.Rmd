@@ -1,7 +1,7 @@
 ---
 title: "8: Cox regression in cohort studies"
 subtitle: "R 4 ASME"
-authors: Lakmal M. & Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+authors: Authors – Lakmal Mudalige & Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
@@ -10,9 +10,9 @@ output: html_notebook
 ## Contents
 
 * Cox regression models
- - simple
- - adjusting for follow-up and age
- - adjusting for other covariates
+  * simple
+  * adjusting for follow-up and age
+  * adjusting for other covariates
 * Comparing Poisson and Cox
  
 NB: the time-to-event (Kaplan-Meier) approach is not used here, but it was explored (with the same dataset!) in [R4SME 03 Survival](https://github.com/andreamazzella/R4SME).
@@ -29,8 +29,8 @@ library("survival")
 library("epiDisplay")
 library("tidyverse")
 
-# Limit significant digits to 3, remove scientific notation
-options(digits = 3, scipen = 999)
+# Limit significant digits to 3, reduce scientific notation
+options(digits = 3, scipen = 9)
 ```
 
 -------------------------------------------------------------------------------
@@ -43,26 +43,28 @@ options(digits = 3, scipen = 999)
 Read in dataset trinmlsh.dta. This contains data from a cohort study on cardiovascular risk factors and mortality among ~300 men from Trinidad. 
 ```{r}
 # Import the dataset
-trin <- read_dta("./trinmlsh.dta")
+trin <- read_dta("trinmlsh.dta")
+
+# Preview
+trin
 ```
 
-```{r}
+```{r include=FALSE}
 # Explore the data
-View(trin)
 glimpse(trin)
 ```
 
 Categorical variables need to be factorised and labelled. I manually took the labels from the Stata file...
 
 The practical later asks to regroup some smoking levels, let's do it now.
-```{r data management}
+```{r data management, include=FALSE}
 trin %<>%
   mutate(
     ethgp = factor(ethgp,
                       levels = c(1:5),
                       labels = c("African", "Indian", "European", "mixed", "Chin/Sem")),
     alc = factor(alc,
-                      levels = c(0, 1, 2, 3),
+                      levels = c(0:3),
                       labels = c("none", "1-4/wk", "5-14/wk", ">=15/wk")),
     smokenum = factor(smokenum,
                       levels = c(0:5),
@@ -101,8 +103,8 @@ We can now examine the smoking-specific mortality rates (per 1,000 person-years)
 pyears(trin_surv ~ smok3, data = trin, scale = 1) %>%
   summary(n = F, rate = T, ci.r = T, scale = 1000)
 
-39/30.5
-53.4/30.5
+39 / 30.5
+53.4 / 30.5
 ```
 
 The package "survival" contains `coxph()`, the function for Cox regression. Exactly like `pyears()`, `coxph()` takes as first argument a formula with the survival object on the left and the exposure on the right.
@@ -194,17 +196,18 @@ Surprise! (not.) The estimates are almost the same as before doing all this.
 # Primary Biliary Cirrhosis (PBC)
 
 This dataset contains information from an RCT comparing the immunosuppressant azathioprine with placebo.
+
 * Outcome: `death`
 * Treatment: `treat`
 * Time:
- - `time` (follow-up in years)
- - `age` in years
+ * `time` (follow-up in years)
+ * `age` in years
 * Other variables:
- - `logb0` (log serum bilirubin concentration)
+ * `logb0` (log serum bilirubin concentration)
  
 Given these time variables, how would you set up your survival object?
 
-```{r}
+```{r include=FALSE}
 # Read in the pbc1bas.dta dataset 
 pbc <- read_dta("pbc1bas.dta")
 
@@ -326,11 +329,13 @@ confint(PCB.m2) %>% exp()
 # No such a thing as too much Whitehall
 
 Read in whitehal.dta.
-```{r}
+```{r include=FALSE}
 whitehall <- read_stata("whitehal.dta")
 
 # Factorise job grade
-whitehall$grade <- factor(whitehall$grade,levels = c(1, 2), labels = c("higher", "lower"))
+whitehall$grade <- factor(whitehall$grade,
+                          levels = c(1, 2),
+                          labels = c("higher", "lower"))
 
 glimpse(whitehall)
 ```

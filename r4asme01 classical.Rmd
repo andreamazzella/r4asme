@@ -1,15 +1,15 @@
 ---
 title: "1: Classical analysis of categorical variables"
 subtitle: "R 4 ASME"
-author: Andrea Mazzella [(github)](https://github.com/andreamazzella)
+author: Author – Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
 -------------------------------------------------------------------------------
 
-## Prerequisites
+## Prerequisites for R 4 ASME
 
-You'll better understand this code if you know about the following concepts. If you want to learn more about them, you could go through some of my introductory material [here](https://github.com/andreamazzella/IntRo).
+You'll better understand this code if you know about the following concepts.
 
 * Use of .Rmd notebooks
 * Use of packages
@@ -17,6 +17,8 @@ You'll better understand this code if you know about the following concepts. If 
 * Pipes `%>%` `%$%` `%<>%`
 * Data and variable types
 * Operators `=` `|` `&` `~` `$` `[`
+
+For a quick introduction to these, have a look [here](https://github.com/andreamazzella/IntRo).
 
 
 ## Contents
@@ -38,7 +40,6 @@ You'll better understand this code if you know about the following concepts. If 
 -------------------------------------------------------------------------------
 
 ## 0. Load packages
-
 ```{r message=FALSE, warning=FALSE}
 # Load packages
 library("haven")
@@ -49,16 +50,17 @@ library("pubh")
 library("rstatix")
 library("tidyverse")
 
-# Limit significant digits to 2, remove scientific notation
-options(digits = 2, scipen = 999)
+# Limit significant digits to 2, reduce scientific notation
+options(digits = 2, scipen = 9)
 ```
 NB: {summarytools} can have issues on Macs - you might need to install some other software. If you get an error message, try following the advice that it gives you.
+Another option is using {epiDisplay}.
 
 # Basic data management
 
 ## 1. Change the default directory
 
-If you use an .Rmd notebook like this one, you don't need to change directory – R assumes the default directory is the directory where the .Rmd is kept.
+If you use an .Rmd notebook like this one, you don't need to change directory – R assumes the default directory is the directory where the .Rmd is kept. So, you need to put your datasets in the same folder. Alternatives include using `knitr::opts_knit$set(root.dir = (...)` or package {here}.
 
 
 ## 2. Import and explore a .dta dataset
@@ -69,6 +71,7 @@ mwanza <- read_dta("mwanza.dta")
 ```
 
 Unfortunately, Stata help files cannot be accessed in R. Key points regarding this dataset:
+
 - Case-control study (not matched)
 - Cases: women aged >=15 years living with HIV
 - Controls: random sample of HIV-negative women
@@ -80,13 +83,17 @@ To look at the variables and their types:
 # Variable names
 names(mwanza)
 
-# Variable names, types, and first values
-glimpse(mwanza)
+# Preview of the dataset
+mwanza
 
-# Visualise the whole dataset, including variable labels
+# Visualise the whole dataset
 View(mwanza)
 ```
 
+```{r include=FALSE}
+# Variable names, types, and first values
+glimpse(mwanza)
+```
 
 ## 3. Function syntax and getting help
 
@@ -108,7 +115,7 @@ To use a variable, you still need to specify which dataset it is from:
 With package {magrittr}, this can be written as:
 `dataset %$% function(variable1)`
 
-For example, to tabulate education by HIV status with column percents, you can use {summarytools}' `ctable()` function:
+For example, to tabulate education by HIV status with column percents, you can use {summarytools}' `ctable()` function (or, if you prefer, {epiDisplay}'s `tabpct()` function).
 ```{r}
 # These two are equivalent
 ctable(mwanza$ed, mwanza$case, prop = "c")
@@ -190,17 +197,15 @@ mwanza$npa[mwanza$npa == 9] <- NA
 mwanza %$% table(npa, useNA = "ifany")
 ```
 
-To recode more than one variable I assume you need to use iteration, again.
+You can use `mutate()` to recode more than one variable, and `map()` to apply the tabulation function to more than one variables in one command.
 ```{r}
-# Sorry, this is poor coding!
-mwanza %<>% mutate(msta = na_if(msta, 9))
-mwanza %$% table(msta, useNA = "ifany")
+mwanza %<>% mutate(msta = na_if(msta, 9),
+                   eth = na_if(eth, 9),
+                   rel = na_if(rel, 9))
 
-mwanza %<>% mutate(eth = na_if(eth, 9))
-mwanza %$% table(eth, useNA = "ifany")
-
-mwanza %<>% mutate(rel = na_if(rel, 9))
-mwanza %$% table(rel, useNA = "ifany")
+mwanza %>%
+  select(msta, eth, rel) %>%
+  map(table, useNA = "ifany")
 ```
 
 
@@ -246,7 +251,7 @@ mwanza %$% table(case, ed) %>%
 
 ## 9. Odds ratios
 
-Unlike Stata, R can calculate OR for each level of exposure with just one command. This is from package {pubh}.
+Unlike Stata, R can calculate OR for each level of exposure with just one command. Function `odds_trend()` is from package {pubh} and it also gives you a dot-and-error plot.
 ```{r}
 # Stratified ORs
 odds_trend(case ~ ed, data = mwanza)
@@ -256,10 +261,10 @@ It looks like more educated people have higher odds of having HIV than less educ
 
 ## 10. Adjusted odds ratios
 
-Let's now check if this association still remains after accounting for age.
+Let's now check if this association still remains after accounting for age. Both packages {pubh} and {epiDisplay} contain a function called `mhor()`, with slightly different syntax.
 ```{r}
 # Option A
-pubh::mhor(case ~ age2 / ed2, data = mwanza)
+mhor(case ~ age2 / ed2, data = mwanza)
 
 # Option B
 # mwanza %$% epiDisplay::mhor(case, ed2, age2, graph = F)

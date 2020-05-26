@@ -1,7 +1,7 @@
 ---
 title: "14: Analysis of quantitative data"
 subtitle: "R 4 ASME"
-author: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+author: Author – Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
@@ -10,27 +10,24 @@ output: html_notebook
 ## Contents
 
 * Univariable linear regression models
- - categorical exposure
- - continuous exposure
- - scatterplots
- - ANOVA (F test)
- - quadratic models
- 
+  * categorical exposure
+  * continuous exposure
+  * scatterplots
+  * ANOVA (F test)
+  * quadratic models
 * Multivariable linear regression models
- - ANOVA (partial F test)
- 
+  * ANOVA (partial F test)
 * Plotting residuals
- - Histograms
- - Quantile-quantile plots
- - Residuals vs fitted scatterplots
- 
+  * Histograms
+  * Quantile-quantile plots
+  * Residuals vs fitted scatterplots
 * Log transformations
 
 -------------------------------------------------------------------------------
 
 ## Packages, options, and data management
 
-```{r libraries}
+```{r message=FALSE, warning=FALSE}
 # Load packages
 library("haven")
 library("magrittr")
@@ -54,13 +51,15 @@ These are the variables of interest:
 ```{r import}
 # Import the dataset
 whitehall <- read_stata("whitehal.dta")
+```
 
+```{r, include=FALSE}
 # Explore data types
 whitehall %>% select(sbp, grade4, agein) %>% glimpse()
 ```
 
 As you can see, there are no value labels, so I'll add them using the dataset help file.
-```{r data_management}
+```{r data_management, include=FALSE}
 # Rename and factorise variables, label values
 whitehall %<>%
   mutate(grade4 = factor(grade4,
@@ -207,8 +206,6 @@ Note that you don't need to predict the sbp values and plot those, you can simpl
 scatter + geom_smooth(method = "lm",
                       formula = y ~ x + I(x^2),
                       colour = "yellow")
-
-?geom_smooth
 ```
 
 You can see that the quadratic and linear lines are almost the same.

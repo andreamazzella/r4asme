@@ -1,7 +1,7 @@
 ---
 title: "6: Stratifying by time"
 subtitle: "R 4 ASME"
-author: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+author: Author – Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
@@ -12,9 +12,8 @@ output: html_notebook
 * Create a "survival object" to analyse cohort studies
 * Calculate incidence rates from a cohort study
 * Stratify rates
- - by a categorical variable
- - by a time variable (by doing a Lexis expansion)
- 
+  * by a categorical variable
+  * by a time variable (by doing a Lexis expansion)
 
 ## Acknowledgements
 
@@ -31,8 +30,8 @@ library("magrittr")
 library("survival")
 library("tidyverse")
 
-# Limit significant digits to 3, remove scientific notation
-options(digits = 3, scipen = 999)
+# Limit significant digits to 3, reduce scientific notation
+options(digits = 3, scipen = 9)
 ```
 
 
@@ -50,12 +49,17 @@ Import and explore `whitehal.dta`. These are the variables of interest:
 # Import the dataset
 whitehall <- read_stata("whitehal.dta")
 
+# Preview
+whitehall
+```
+
+```{r include=FALSE}
 # Explore data types
 glimpse(whitehall)
 ```
 
 As you can see, there are no value labels, so I'll add them using the dataset help file.
-```{r data_management}
+```{r data_management, include=FALSE}
 # Rename and factorise variables, label values
 whitehall %<>%
   mutate(
@@ -111,7 +115,7 @@ pyears(surv_white ~ grade, data = whitehall, scale = 1) %>%
 
 Calculate the cardiac mortality rate ratio in these two job groups:
 ```{r}
-8.8/4.4
+8.8 / 4.4
 ```
 
 -------------------------------------------------------------------------------
@@ -271,7 +275,7 @@ surv_white_age2 <- whitehall %$% Surv(time = as.numeric(timein) / 365.25,
                                      event = chd,
                                      origin = as.numeric(timebth) / 365.25)
 # Split
-white_split <- survSplit(surv_white_age ~ .,
+white_split2 <- survSplit(surv_white_age2 ~ .,
                          data = whitehall,
                          cut = c(40, seq(50, 80, 5), 90),
                          episode = "ageband")
@@ -282,9 +286,9 @@ pyears(surv_white_age2 ~ smok3 + grade,
        scale = 1) %>% 
   summary(n = F, event = F, pyears = F, rate = T, scale = 1000)
 
-5.1/1.3
-7.4/4.5
-10.6/6.3
+5.1 / 1.3
+7.4 / 4.5
+10.6 / 6.3
 ```
 
 

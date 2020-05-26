@@ -1,38 +1,39 @@
 ---
 title: "2: Review of logistic regression"
 subtitle: "R 4 ASME"
-author: Andrea Mazzella [(github)](https://github.com/andreamazzella)
+author: Author – Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
 -------------------------------------------------------------------------------
 
-## Prerequisites
-
-* 1: Classical analysis of categorical variables
-* SME
- - My SME material is [here](https://github.com/andreamazzella/R4SME)
-
 ## Contents
 
-This is a whirlwind summary of the four SME topics on logistic regression. 
+This is a summary of the four SME topics on logistic regression.
+For more material, I have translated the SME practicals, you can access them [here](https://github.com/andreamazzella/R4SME).
 
 -------------------------------------------------------------------------------
 
 ## Data management
 
+Before using another .Rmd file or another .R script, I recommend restarting the R session. You can do this by clicking on `Session` in the menu and then selecting `Restart R`; or with the keyboard shortcut `Ctrl + Shift + F10`.
+
+This is to have a "fresh start": removing all objects from the environment and most importantly unloading the libraries of the packages used in the previous .Rmd!
+
+This is preferable to `rm(list = ls())`, which only removes the objects from the environment.
+
 ```{r message=FALSE, warning=FALSE}
 # Load packages
 library("haven")
 library("magrittr")
+library("summarytools")
 library("epitools")
-library("epiDisplay")
 library("pubh")
 library("rstatix")
 library("tidyverse")
 
 # Limit significant digits to 2, remove scientific notation
-options(digits = 2, scipen = 999)
+options(digits = 2, scipen = 9)
 ```
 
 ```{r}
@@ -126,7 +127,7 @@ mwanza$npa <- factor(mwanza$npa,
 glm(case ~ npa,
     family = "binomial",
     data = mwanza) %>% 
-  logistic.display()
+  epiDisplay::logistic.display()
 
 # Relevel the factor back, if you want
 # mwanza$npa <- factor(mwanza$npa,
@@ -179,7 +180,10 @@ logit_without <- glm(case ~ npa + ed2 + age1,
     data = mwanza)
 
 # Likelihood ratio test
-lrtest(logit_inter, logit_without)
+epiDisplay::lrtest(logit_without, logit_inter)
+
+# Note that ANOVA gives you the same χ statistic and df
+# anova(logit_without, logit_inter)
 ```
 
 
@@ -241,14 +245,14 @@ mwanza %$% table(npa, useNA = "ifany")
 ```
 
 ```{r 2a.2 solution}
-mwanza %$% tabpct(npa, case, percent = "col", graph = F)
+mwanza %$% ctable(npa, case, prop = "c", useNA = "no")
 ```
 
 ```{r 2b.1 solution}
 glm(case ~ npa,
     family = "binomial",
     data = mwanza) %>% 
-  logistic.display()
+  epiDisplay::logistic.display()
 ```
 *Solution 2b.2*:
 There is very strong evidence of association between HIV status and number of sexual partners (LRT p < 0.001).
@@ -257,7 +261,7 @@ There is very strong evidence of association between HIV status and number of se
 glm(case ~ npa + age1,
     family = "binomial",
     data = mwanza) %>% 
-  logistic.display()
+  epiDisplay::logistic.display()
 ```
 
 *Solution 2d*
@@ -266,7 +270,7 @@ The OR estimates have slightly changed, showing the confounding effect of age. E
 *Solution 2e*
 +----------------+-------------+-------------+------------------------+----------------------+
 |                | HIV+ (col%) | HIV- (col%) | Unadjusted OR (95% CI) | Adjusted OR (95% CI) |
-+----------------+-------------+-------------+------------------------+---------------------+
++----------------+-------------+-------------+------------------------+----------------------+
 | 0-1 partners   | 27 (15%)    | 173 (31%)   | 0.47 (0.29,0.75)       | 0.51 (0.31,0.82)     |
 +----------------+-------------+-------------+------------------------+----------------------+
 | 2-4 partners   | 92 (50%)    | 277 (50%)   | 1 (baseline group)     | 1 (baseline group)   |
@@ -284,7 +288,7 @@ The OR estimates have slightly changed, showing the confounding effect of age. E
 glm(case ~ npa + age1 + ed2,
     family = "binomial",
     data = mwanza) %>% 
-  logistic.display()
+  epiDisplay::logistic.display()
 ```
 *Solution 3a*
 Even after adjusting for school, there is very strong evidence for an association.
@@ -297,7 +301,7 @@ There is no evidence of interaction (LRT p = 0.92)
 logit_inter2 <- glm(case ~ npa * age1,
     family = "binomial",
     data = mwanza)
-logistic.display(logit_inter2)
+epiDisplay::logistic.display(logit_inter2)
 ```
 *Solution 4a1*
 The interaction OR estimates for all levels when `npa` is 4 are extremely high, and their 95% CI go from 0 to positive infinity.
@@ -313,7 +317,7 @@ One of the possible intersections is empty (the datasets contains no women with 
 logit_inter3 <- glm(case ~ partners * age1,
     family = "binomial",
     data = mwanza)
-logistic.display(logit_inter3)
+epiDisplay::logistic.display(logit_inter3)
 
 # Model without interaction
 logit_without3 <- glm(case ~ partners + age1,
@@ -321,12 +325,12 @@ logit_without3 <- glm(case ~ partners + age1,
     data = mwanza)
 
 # Likelihood ratio test
-lrtest(logit_inter3, logit_without3)
+epiDisplay::lrtest(logit_inter3, logit_without3)
 ```
 *Solution4b*
 There is no evidence of interaction.
 
 *Solution5*
-I hate lincom.
+I'm not aware of a `lincom` equivalent in R.
 
 -------------------------------------------------------------------------------

@@ -1,32 +1,24 @@
 ---
 title: "11: Analysis of correlated data"
 subtitle: "R 4 ASME"
-author: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+author: Author – Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
 -------------------------------------------------------------------------------
 
 ## Contents
+
 * Analysis of correlated data with Poisson and logistic regression
- - robust standard errors
- - Generalised Estimating Equations
- - Random Effects models
+  * robust standard errors
+  * Generalised Estimating Equations
+  * Random Effects models
 
 -------------------------------------------------------------------------------
 
 ## 0. Packages and options
 
-```{r}
-# install.packages("miceadds")    # robust standard errors
-# install.packages("lme4")        # RE
-# install.packages("broom")       # improve regression output
-# install.packages("broom.mixed") # improve regression output for lme4
-# install.packages("geepack")     # GEE
-```
-
-
-```{r}
+```{r message=FALSE, warning=FALSE}
 # Load packages
 library("haven")
 library("magrittr")
@@ -39,7 +31,7 @@ library("broom.mixed") # improve regression output for lme4
 library("geepack")     # GEE
 library("tidyverse")
 
-# Limit significant digits to 3, remove scientific notation
+# Limit significant digits to 3, reduce scientific notation
 options(digits = 3, scipen = 9)
 ```
 
@@ -52,7 +44,7 @@ These data are from a pneumococcal vaccine trial performed in Papua New Guinea, 
 
 Each child might have more than one record, because each record represents an episode of pneumonia (or the last period of follow-up, without pneumonia). (This means that the dataset was produced with Stata's `stset` command).
 
-```{r}
+```{r include=FALSE}
 papua <- read_dta("pngnew.dta")
 glimpse(papua)
 ```
@@ -226,7 +218,8 @@ rr_conf_high <- 1.006
 
 # Calculate VE
 (vaccine_efficacy <- (1 - rate_ratio) * 100)
-(ve_conf_low <- (1 - rr_conf_high) * 100)
+ve_conf_low <- (1 - rr_conf_high) * 100
+(if (ve_conf_low > 0) ve_conf_low else ve_conf_low <- 0)
 (ve_conf_high <- (1 - rr_conf_low) * 100)
 ```
 
@@ -243,7 +236,7 @@ surv_papua_age <- papua %$% Surv(time = as.numeric(timein) / 365.25,
 ```
 
 *-----*
-*ISSUE* How do I use the new surv object in the glmer() function? 
+*ISSUE* How do I use the new surv object in the `glmer()` function? 
 *-----* Do I need to offset for something other than pyrs?
 
 ```{r}
@@ -326,7 +319,7 @@ These data are from a study on household contacts of tubercolosis cases. We will
 
 ## 10. Import and explore data
 
-```{r}
+```{r include=FALSE}
 tb <- read_dta("hhtb.dta") %>% mutate_if(is.labelled, as_factor)
 glimpse(tb)
 ```

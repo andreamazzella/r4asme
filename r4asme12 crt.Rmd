@@ -1,7 +1,7 @@
 ---
 title: "12: Cluster-randomised trials"
 subtitle: "R 4 ASME"
-author: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+author: Author – Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
@@ -12,30 +12,24 @@ output: html_notebook
 -------------------------------------------------------------------------------
 
 ## Contents
-* CRT sample size calculation
- - difference in rates
 
+* CRT sample size calculation
+  * difference in rates
 * Cluster-level analysis
- - t-test
- - Wilcoxon rank-sum test
- 
+  * t-test
+  * Wilcoxon rank-sum test
 * Individual-level analysis (issues)
- - RE
- - GEE
- 
+  * RE
+  * GEE
 * Analysis of pair-matched studies
- - pairwise t-test
- - Adjusted measures of effect with two-stage procedure (issues)
+  * pairwise t-test
+  * Adjusted measures of effect with two-stage procedure (issues)
 
 -------------------------------------------------------------------------------
 
 ## 0. Packages and options
 
-```{r}
-# install.packages("clusterPower")
-```
-
-```{r}
+```{r message=FALSE, warning=FALSE}
 # Load packages
 library("clusterPower") # CRT sample size calculations
 library("haven")
@@ -45,7 +39,7 @@ library("lme4")
 library("geepack")
 library("tidyverse")
 
-# Limit significant digits to 3, remove scientific notation
+# Limit significant digits to 3, reduce scientific notation
 options(digits = 3, scipen = 9)
 ```
 
@@ -92,7 +86,7 @@ There are two datasets, which present the same data in different ways:
 * gamindiv.dta: each row is a child
 * gamvill.dta: each row is a village
 
-```{r}
+```{r include=FALSE}
 ind <- read_dta("gamindiv.dta")
 vil <- read_dta("gamvill.dta")
 glimpse(ind)
@@ -316,7 +310,7 @@ tidy(ind_re,
  
 These data are from a CRT in Mwanza investigating the effect of improved sexual health services on HIV incidence rate; it contains longitudinal data on a cohort who were negative at baseline.
 
-```{r}
+```{r include=FALSE}
 mz <- read_stata("mztrial.dta")
 glimpse(mz)
 ```
@@ -398,6 +392,7 @@ mz_summary %<>% mutate(risk_percent = observed/at_risk * 100)
 
 mz_summary %>% dplyr::select(-expected)
 ```
+
 ```{r}
 # Pair-wise RRs
 ## Terribly hard-coded, sorry!
@@ -508,5 +503,5 @@ NB: this time if you use the estimate from the test you get 0.492, which is wron
 *ISSUE* 
 *-----*
 
-Who knows???
+Not sure how to.
 -------------------------------------------------------------------------------

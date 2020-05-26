@@ -1,7 +1,7 @@
 ---
 title: "9: Further analysis with Cox regression"
 subtitle: "R 4 ASME"
-authors: Lakmal M. & Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+authors: Authors – Lakmal Mudalige & Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
@@ -10,9 +10,9 @@ output: html_notebook
 ## Contents
 
 * Examine the proportionality assumption in Cox models
- - graphically, with Nelson-Aalen plots
- - with a test for interaction
- - with a test for residuals
+  * graphically, with Nelson-Aalen plots
+  * with a test for interaction
+  * with a test for residuals
  
 * Cox regression with multiple covariates
 
@@ -29,7 +29,7 @@ library("survminer")
 library("epiDisplay")
 library("tidyverse")
 
-# Limit significant digits to 3, remove scientific notation
+# Limit significant digits to 3, reduce scientific notation
 options(digits = 3, scipen = 9)
 ```
 
@@ -54,7 +54,7 @@ This dataset contains information on dietary energy intake and subsequent incide
 - `fibre` (daily dietary fibre, g)
             
 Data import and management. The practical asks later to categorise the `fibre` variable, let's do it now.
-```{r}
+```{r include=FALSE}
 diet <- read_dta("dietlsh.dta") %>% mutate_if(is.labelled, as_factor)
 
 glimpse(diet)
@@ -207,7 +207,7 @@ There is no evidence against proportionality using age as timescale.
 
 Investigate the effect of dietary fibre (`fibre_cat`) on CHD mortality, first with follow-up time scale.
 
-```{r message=FALSE, warning=FALSE}
+```{r}
 # Create survfit object
 sf_diet_fibre <- survfit(surv_diet ~ fibre_cat, data = diet)
 

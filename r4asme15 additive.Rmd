@@ -1,7 +1,7 @@
 ---
 title: "15: Additive and multiplicative models"
 subtitle: "R 4 ASME"
-author: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
+author: Author – Andrea Mazzella [(GitHub)](https://github.com/andreamazzella)
 output: html_notebook
 ---
 
@@ -15,7 +15,7 @@ output: html_notebook
 
 ## Packages and options
 
-```{r libraries}
+```{r message=FALSE, warning=FALSE}
 # Load packages
 library("haven")
 library("magrittr")
@@ -23,7 +23,7 @@ library("broom")
 library("mgcv")      # additive models
 library("tidyverse")
 
-# Limit significant digits to 3, remove scientific notation
+# Limit significant digits to 3, reduce scientific notation
 options(digits = 3, scipen = 9)
 ```
 
@@ -53,7 +53,7 @@ These are the variables of interest.
  -`exit` (date of exit, formatted as number of days)
  -`dob` (date of birth, formatted as number of days)
 
-```{r import}
+```{r import, include=FALSE}
 # Import the dataset
 gold <- read_stata("goldmine.dta") %>% select(tb, hiv, silic, entry, exit)
 
@@ -183,35 +183,35 @@ There's also `gam()` from {gam}.
 *-----------* Should I remove pyears from the offset?
 
 ```{r broken}
-library("mgcv")
-gold %<>% mutate(tb_rate = (tb / pyears))
-
-?mgcv::gam()
-
-# Additive model without interaction - broken
-additive <- mgcv::gam(tb_rate ~ hiv + silic + offset(log(pyears)),
-                      family = poisson(link = "identity"),
-                      gold)
-summary(additive)
-coef(additive) %>% exp()
-
-# Additive model with interaction - broken
-additive_inter <- mgcv::gam(tb_rate ~ hiv * silic + offset(log(pyears)),
-                            family = poisson(link = "identity"),
-                            gold)
-summary(additive_inter)
-coef(additive_inter) %>% exp()
-
-# LRT
-epiDisplay::lrtest(additive, additive_inter)
-
-# gam::gam()
-library("gam")
-additive_2 <- gam::gam(tb ~ hiv + silic,
-                     family = poisson(),
-                     gold)
-?gam::gam()
-tidy(additive_2)
+# library("mgcv")
+# gold %<>% mutate(tb_rate = (tb / pyears))
+# 
+# ?mgcv::gam()
+# 
+# # Additive model without interaction - broken
+# additive <- mgcv::gam(tb_rate ~ hiv + silic + offset(log(pyears)),
+#                       family = poisson(link = "identity"),
+#                       gold)
+# summary(additive)
+# coef(additive) %>% exp()
+# 
+# # Additive model with interaction - broken
+# additive_inter <- mgcv::gam(tb_rate ~ hiv * silic + offset(log(pyears)),
+#                             family = poisson(link = "identity"),
+#                             gold)
+# summary(additive_inter)
+# coef(additive_inter) %>% exp()
+# 
+# # LRT
+# epiDisplay::lrtest(additive, additive_inter)
+# 
+# # gam::gam()
+# library("gam")
+# additive_2 <- gam::gam(tb ~ hiv + silic,
+#                      family = poisson(),
+#                      gold)
+# ?gam::gam()
+# tidy(additive_2)
 ```
 
 > Below: Stata stuff
@@ -256,13 +256,13 @@ We *should* be able to obtain the predicted number of tubercolosis cases, accord
 *-----------*
 
 ```{r broken2}
-# Broken
-gold %>% mutate(expected_rate = predict(additive, type = "response")) %>% 
-         group_by(hiv, silic) %>%
-         summarise(observed_TB = sum(as.numeric(tb)),
-                   expected_TB = expected_rate * pyears,
-                 # expected_rate = sum(expected_rate),
-                   OE_difference = abs(observed_TB - expected_TB))
+# # Broken
+# gold %>% mutate(expected_rate = predict(additive, type = "response")) %>% 
+#          group_by(hiv, silic) %>%
+#          summarise(observed_TB = sum(as.numeric(tb)),
+#                    expected_TB = expected_rate * pyears,
+#                  # expected_rate = sum(expected_rate),
+#                    OE_difference = abs(observed_TB - expected_TB))
 ```
 
 

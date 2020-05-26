@@ -1,7 +1,7 @@
 ---
 title: "7: Poisson regression in cohort studies"
 subtitle: "R 4 ASME"
-authors: Andrea Mazzella [(GitHub)](https://github.com/andreamazzella) & Lakmal M.
+authors: Authors – Andrea Mazzella [(GitHub)](https://github.com/andreamazzella) & Lakmal Mudalige
 output: html_notebook
 ---
 
@@ -10,10 +10,10 @@ output: html_notebook
 ## Contents
 
 * Poisson regression models
- - simple
- - adjusting for covariates
- - checking for interaction
- - checking for linear associations
+  * simple
+  * adjusting for covariates
+  * checking for interaction
+  * checking for linear associations
 
 -------------------------------------------------------------------------------
 
@@ -28,8 +28,8 @@ library("summarytools")
 library("epiDisplay")
 library("tidyverse")
 
-# Limit significant digits to 3, remove scientific notation
-options(digits = 3, scipen = 999)
+# Limit significant digits to 3, reduce scientific notation
+options(digits = 3, scipen = 9)
 ```
 
 -------------------------------------------------------------------------------
@@ -37,18 +37,19 @@ options(digits = 3, scipen = 999)
 
 ## 1. Data import and exploration
 
-Get ondrate.dta in the same folder as this .Rmd notebook and import it.
+Get ondrate.dta in the same folder as this .Rmd notebook, import it, and explore it.
 This dataset contains information from a cohort study on ~1500 people living in Nigeria, on the effect of onchocerciasis (river blindness, a parasitic infection) on optic nerve disease.
 
 ```{r}
 ond <- read_dta("ondrate.dta") %>% mutate_if(is.labelled, as_factor)
+ond
 ```
 
-Explore the dataset.
+```{r include=FALSE}
+glimpse(ond)
+```
 
 ```{r}
-View(ond)
-glimpse(ond)
 table(ond$sex, useNA = "ifany")
 ```
 
@@ -100,7 +101,7 @@ We can see that the incidence increases dramatically with age, it's about the sa
 Now perform the same three analyses but with Poisson regression.
 Poisson regression in R uses the `glm()` formula – but it also needs to include `offset(log(<pyears>))` as a covariate. This is for mathematical reasons.
 
-epiDisplay has a function to simplify the Poisson regression input: `idr.display()`.
+{epiDisplay} has a function to simplify the Poisson regression input: `idr.display()`.
 
 ```{r}
 # Age
@@ -246,7 +247,7 @@ There is no evidence against a linear increase in the log(rate) from one age gro
 ## 8. Back to Whitehall
 
 Open whitehal.dta and use Poisson regression to examine the effect of job grade on cardiac mortality, adjusting for ageband and smoking status simultaneously. 
-```{r}
+```{r include=FALSE}
 whitehall <- read_stata("whitehal.dta")
 glimpse(whitehall)
 ```
@@ -258,7 +259,7 @@ The whitehall dataset needs massive data management (see session 6) but we'll no
 - smoking status as a 3-level factor variable.
 ```{r}
 # Explore age distribution
-hist(whitehall$agein)
+whitehall %>% ggplot(aes(agein)) + geom_histogram()
 
 # Categorise age in 5-year bands
 whitehall$ageband <- cut(whitehall$agein, seq(40, 70, 5)) %>% as.factor()
